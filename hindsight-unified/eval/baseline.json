@@ -1,0 +1,81 @@
+{
+  "runs": 3,
+  "metrics": {
+    "recall_hit": {
+      "metric": "recall_hit",
+      "mean": 0.7667,
+      "ci_lower": 0.6778,
+      "ci_upper": 0.8556,
+      "n": 90,
+      "run_std": 0.0
+    },
+    "abstention": {
+      "metric": "abstention",
+      "mean": 0.9667,
+      "ci_lower": 0.9222,
+      "ci_upper": 1.0,
+      "n": 90,
+      "run_std": 0.0
+    },
+    "ordering": {
+      "metric": "ordering",
+      "mean": 0.8,
+      "ci_lower": 0.7111,
+      "ci_upper": 0.8778,
+      "n": 90,
+      "run_std": 0.0
+    }
+  },
+  "by_category": {
+    "abstention": {
+      "recall_hit": 1.0,
+      "abstention": 0.6667,
+      "ordering": 1.0
+    },
+    "contradiction_resolution": {
+      "recall_hit": 0.3333,
+      "abstention": 1.0,
+      "ordering": 0.0
+    },
+    "event_ordering": {
+      "recall_hit": 0.3333,
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "information_extraction": {
+      "recall_hit": 1.0,
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "instruction_following": {
+      "recall_hit": 0.6667,
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "knowledge_update": {
+      "recall_hit": 1.0,
+      "abstention": 1.0,
+      "ordering": 0.0
+    },
+    "multi_session_reasoning": {
+      "recall_hit": 1.0,
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "preference_following": {
+      "recall_hit": 1.0,
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "summarization": {
+      "recall_hit": 0.3333,
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "temporal_reasoning": {
+      "recall_hit": 1.0,
+      "abstention": 1.0,
+      "ordering": 1.0
+    }
+  }
+}
