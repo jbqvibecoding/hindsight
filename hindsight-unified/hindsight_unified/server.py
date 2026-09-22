@@ -29,6 +29,7 @@ from typing import Any
 
 from .config import Settings
 from .engine import UnifiedEngine
+from .substrate import SingletonLockHeld
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +172,14 @@ def serve(settings: Settings | None = None) -> None:
         format="%(asctime)s %(levelname)s [unified-memory] %(message)s",
     )
     _engine = UnifiedEngine(settings)
-    _engine.start()
+    try:
+        _engine.start(require_singleton=True)
+    except SingletonLockHeld as e:
+        # Not a crash: the supervisor's watchdog can resurrect a sidecar beside
+        # a hung-but-alive one, and the loser must decline rather than write.
+        logger.warning("unified memory sidecar not starting: %s", e)
+        _engine = None
+        raise SystemExit(0) from None
     httpd = ThreadingHTTPServer((settings.host, settings.port), Handler)
     logger.info("unified memory sidecar listening on http://%s:%d", settings.host, settings.port)
     try:

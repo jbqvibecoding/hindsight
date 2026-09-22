@@ -29,7 +29,7 @@ from .adapters import (
 from .asyncrunner import AsyncRunner
 from .config import Settings
 from .pipeline import LayeredPipeline
-from .substrate import MarkdownSubstrate
+from .substrate import MarkdownSubstrate, SingletonLockHeld
 from .types import CaptureEvent, RecallRequest
 
 logger = logging.getLogger(__name__)
@@ -76,8 +76,20 @@ class UnifiedEngine:
 
     # -- lifecycle -----------------------------------------------------------
 
-    def start(self) -> None:
+    def start(self, *, require_singleton: bool = False) -> None:
+        """Start adapters and, when asked, claim the memory root exclusively.
+
+        ``require_singleton`` raises :class:`SingletonLockHeld` when another live
+        process already owns this root. The HTTP server passes it so a sidecar
+        resurrected beside a hung one exits instead of interleaving writes into
+        the markdown we call truth. In-process embedders (tests, a library
+        caller) leave it off and rely on the per-bank append lock.
+        """
         self._settings.home.mkdir(parents=True, exist_ok=True)
+        if require_singleton and not self._substrate.acquire_singleton():
+            raise SingletonLockHeld(
+                f"another unified-memory process already owns {self._settings.home}"
+            )
         for adapter in (
             self._hindsight,
             self._everos,
@@ -113,6 +125,7 @@ class UnifiedEngine:
             except Exception as e:  # noqa: BLE001
                 logger.debug("adapter %s stop failed: %s", adapter.name, e)
         self._runner.close()
+        self._substrate.release_singleton()
         self._started = False
 
     @property
