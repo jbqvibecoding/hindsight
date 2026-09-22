@@ -30,7 +30,7 @@ from .asyncrunner import AsyncRunner
 from .config import Settings
 from .pipeline import LayeredPipeline
 from .substrate import MarkdownSubstrate, SingletonLockHeld
-from .types import CaptureEvent, RecallRequest
+from .types import CaptureEvent, RecallMarker, RecallRequest
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +212,38 @@ class UnifiedEngine:
                 for r in fused
             ],
             "meta": meta,
+            "marker": self._marker(len(fused)).as_dict(),
         }
+
+    def _marker(self, num_results: int) -> RecallMarker:
+        """Describe the health of the layers this recall could consult.
+
+        Always returned, including on a hit, so a caller never has to infer
+        degradation from an empty ``results`` list.
+        """
+        if self._hindsight is None:
+            return RecallMarker(
+                status="degraded",
+                reason="brain_disabled",
+                text=(
+                    "Semantic recall is switched off (UNIFIED_MEMORY_ENABLE_HINDSIGHT); "
+                    "answered from the verbatim substrate only."
+                ),
+                brain=False,
+                num_results=num_results,
+            )
+        if not self._hindsight.available():
+            return RecallMarker(
+                status="degraded",
+                reason="brain_unavailable",
+                text=(
+                    "The semantic brain did not load, so only verbatim keyword recall "
+                    "ran. An empty result here does not mean the memory is empty."
+                ),
+                brain=False,
+                num_results=num_results,
+            )
+        return RecallMarker(status="ok", brain=True, num_results=num_results)
 
     def search_conversations(
         self, *, bank: str, query: str, limit: int = 5, session_key: str = ""
@@ -243,10 +274,48 @@ class UnifiedEngine:
         if self._hindsight is not None and self._hindsight.available():
             answer = self._hindsight.reflect(bank, query)
             if answer:
-                return {"answer": answer, "source": "hindsight"}
-        # Degraded fallback: return the top verbatim recalls as raw material.
-        recall = self.recall(bank=bank, query=query, limit=5)
-        return {"answer": recall["context"], "source": "substrate"}
+                return {"answer": answer, "source": "hindsight", "synthesized": True}
+
+        # Degraded fallback: hand back the raw recalled material, NOT the
+        # assembled context. The assembled block carries our own triage
+        # scaffolding ("AAAK index (scan, then read full entries below):"), and
+        # a caller that pastes an `answer` into a prompt would be pasting our
+        # question framing as if it were memory content. ``synthesized`` says
+        # plainly that nothing reasoned over this.
+        bank_dir = self._settings.bank_dir(bank)
+        req = RecallRequest(bank=bank, query=query, limit=5)
+        _context, fused, _meta = self._pipeline.recall(req, bank_dir)
+        return {
+            "answer": "\n\n".join(r.text for r in fused if r.text),
+            "source": "substrate",
+            "synthesized": False,
+            "marker": self._marker(len(fused)).as_dict(),
+        }
+
+    def rederive(self, *, bank: str) -> dict[str, Any]:
+        """Discard the derived layer and rebuild it from the markdown truth.
+
+        The invariant this system is built on — markdown is truth, every index is
+        a rebuildable derivative — as an operation. Needed whenever the way we
+        derive changes (a new scorer, new index fields, a corrupted index):
+        without it the only way to pick up a derivation change is to lose
+        history. The md logs are never touched.
+        """
+        bank_dir = self._settings.bank_dir(bank)
+        index = bank_dir / "index.jsonl"
+        before = self._substrate.count(bank_dir)
+        if index.exists():
+            index.unlink()
+        self._substrate.forget_caches(bank_dir)
+        recovered = 0
+        if self._everos is not None:
+            recovered = self._everos.reconcile(bank_dir)
+        return {
+            "ok": True,
+            "entries_before": before,
+            "entries_rebuilt": recovered,
+            "brain_reindexed": False,  # L1 re-extraction is the brain's own job
+        }
 
     def export(self, *, bank: str) -> dict[str, Any]:
         bank_dir = self._settings.bank_dir(bank)

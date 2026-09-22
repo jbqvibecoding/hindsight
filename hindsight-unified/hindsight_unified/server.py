@@ -125,6 +125,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, engine.reflect(
                     bank=_bank_of(body), query=body.get("query", ""),
                 ))
+            elif path == "/rederive":
+                # Drop the derived index and rebuild it from the md truth. The
+                # verbatim logs are untouched, so this is safe to call after any
+                # change to how we derive.
+                self._send(200, engine.rederive(bank=_bank_of(body)))
             elif path == "/seed":
                 self._send(200, _handle_seed(engine, body))
             else:
