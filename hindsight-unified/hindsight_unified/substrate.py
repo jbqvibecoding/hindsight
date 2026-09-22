@@ -488,6 +488,20 @@ class MarkdownSubstrate:
                 )
         return out
 
+    def recent_turns(
+        self, bank_dir: Path, *, session_key: str = "", limit: int = 2
+    ) -> list[tuple[str, str]]:
+        """The last ``limit`` turns, oldest-first, as ``(user, assistant)``.
+
+        Recall needs conversation history to expand an anaphoric question, and
+        the substrate already holds it — so the history costs one read and no
+        new API surface for the client to pass it in.
+        """
+        entries = self._load(bank_dir)
+        if session_key:
+            entries = [e for e in entries if e.session_key == session_key]
+        return [(e.user, e.assistant) for e in entries[-limit:]]
+
     def count(self, bank_dir: Path) -> int:
         return len(self._load(bank_dir))
 

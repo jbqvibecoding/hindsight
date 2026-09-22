@@ -3,26 +3,26 @@
   "metrics": {
     "recall_hit": {
       "metric": "recall_hit",
-      "mean": 0.7667,
-      "ci_lower": 0.6778,
-      "ci_upper": 0.8556,
-      "n": 90,
+      "mean": 0.9394,
+      "ci_lower": 0.8889,
+      "ci_upper": 0.9798,
+      "n": 99,
       "run_std": 0.0
     },
     "abstention": {
       "metric": "abstention",
-      "mean": 0.9667,
-      "ci_lower": 0.9222,
+      "mean": 0.9697,
+      "ci_lower": 0.9293,
       "ci_upper": 1.0,
-      "n": 90,
+      "n": 99,
       "run_std": 0.0
     },
     "ordering": {
       "metric": "ordering",
-      "mean": 0.9333,
-      "ci_lower": 0.8778,
-      "ci_upper": 0.9778,
-      "n": 90,
+      "mean": 1.0,
+      "ci_lower": 1.0,
+      "ci_upper": 1.0,
+      "n": 99,
       "run_std": 0.0
     }
   },
@@ -33,12 +33,17 @@
       "ordering": 1.0
     },
     "contradiction_resolution": {
-      "recall_hit": 0.3333,
+      "recall_hit": 1.0,
       "abstention": 1.0,
-      "ordering": 0.3333
+      "ordering": 1.0
     },
     "event_ordering": {
       "recall_hit": 0.3333,
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "followup_reference": {
+      "recall_hit": 1.0,
       "abstention": 1.0,
       "ordering": 1.0
     },
@@ -48,7 +53,7 @@
       "ordering": 1.0
     },
     "instruction_following": {
-      "recall_hit": 0.6667,
+      "recall_hit": 1.0,
       "abstention": 1.0,
       "ordering": 1.0
     },
@@ -68,7 +73,7 @@
       "ordering": 1.0
     },
     "summarization": {
-      "recall_hit": 0.3333,
+      "recall_hit": 1.0,
       "abstention": 1.0,
       "ordering": 1.0
     },

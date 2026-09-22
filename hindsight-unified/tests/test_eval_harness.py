@@ -164,11 +164,13 @@ def test_delta_refuses_a_verdict_inside_the_noise_floor() -> None:
 # -- end to end ----------------------------------------------------------------
 
 
-def test_harness_measures_the_known_ordering_defect(tmp_path: Path) -> None:
-    """The instrument must actually detect the bug workstream A/D will fix.
+def test_harness_sees_the_changed_mind_case_end_to_end(tmp_path: Path) -> None:
+    """The case that pinned the original defect, now pinning the fix.
 
-    A harness that reports everything green on a system with a known defect is
-    worse than no harness, so this pins the defect rather than the fix.
+    Written when both assertions were 0.0: keyword overlap matched only the
+    stale turn (which contains "indent") and missed the correction entirely,
+    which then also made ordering impossible. The two-lane rewrite retrieves
+    the correction and recency presentation puts it first.
     """
     case = Case(
         case_id="cr-live",
@@ -183,11 +185,9 @@ def test_harness_measures_the_known_ordering_defect(tmp_path: Path) -> None:
         must_precede=["4 spaces", "tabs"],
     )
     rows = score_rows(answer_cases([case], tmp_path / "store"), [case])
-    # Measured, and worse than "wrong order": asked "how do I indent?", keyword
-    # overlap matches the stale turn (which contains "indent") and misses the
-    # correction entirely, so the current fact is not retrieved at all.
-    assert rows[0]["metrics"]["recall_hit"] == 0.0
-    assert rows[0]["metrics"]["ordering"] == 0.0
+    assert rows[0]["metrics"]["recall_hit"] == 1.0
+    assert rows[0]["metrics"]["ordering"] == 1.0
+    # The superseded fact is still there — tagged by order, never deleted.
     assert "tabs" in rows[0]["retrieval_context"]
 
 
@@ -231,13 +231,13 @@ def test_failures_are_not_cached_but_successes_are(tmp_path: Path) -> None:
 
 def test_shipped_case_set_is_wellformed() -> None:
     cases = load_cases(Path(__file__).resolve().parents[1] / "eval" / "cases.jsonl")
-    assert len(cases) == 30
-    assert len({c.case_id for c in cases}) == 30
-    # Ten BEAM-style skill categories, three cases each.
+    assert len(cases) == 33
+    assert len({c.case_id for c in cases}) == 33
+    # Ten BEAM-style skill categories plus anaphoric follow-ups, three each.
     categories = {}
     for case in cases:
         categories[case.category] = categories.get(case.category, 0) + 1
-    assert len(categories) == 10
+    assert len(categories) == 11
     assert set(categories.values()) == {3}
     for case in cases:
         assert case.question and case.answer

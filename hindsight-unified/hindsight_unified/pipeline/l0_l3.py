@@ -30,6 +30,12 @@ from ..adapters.mempalace_index import MempalaceIndexAdapter
 from ..adapters.openviking_injection import OpenVikingInjectionAdapter
 from ..substrate import MarkdownSubstrate
 from ..types import CaptureEvent, Recalled, RecallRequest
+from .conversational import (
+    RECENT_TURNS,
+    build_conversational_query,
+    conversational_reserve,
+    merge_ranked,
+)
 from .stages import (
     ConsolidationRun,
     RunOutcome,
@@ -139,22 +145,30 @@ class LayeredPipeline:
             if items:
                 ranked_lists.append(items)
 
-        # Always-on substrate keyword recall (verbatim safety net).
-        sub_hits = self._substrate.search(
-            bank_dir, req.query, limit=req.limit, session_key=""
+        # Always-on substrate recall (verbatim safety net), in two lanes: the
+        # question as asked, and a deterministic rewrite that folds in the last
+        # couple of turns. An anaphoric follow-up ("and the other one?") names
+        # nothing a lexical scorer can match, and the rewrite costs no model
+        # call — see pipeline/conversational.py.
+        raw_lane = self._substrate_lane(bank_dir, req.query, req.limit)
+        rewrite_lane: list[Recalled] = []
+        expanded = build_conversational_query(
+            req.query,
+            self._substrate.recent_turns(
+                bank_dir, session_key=req.session_key, limit=RECENT_TURNS
+            ),
         )
-        if sub_hits:
-            ranked_lists.append(
-                [
-                    Recalled(
-                        text=entry.as_text(),
-                        source="substrate",
-                        score=score,
-                        metadata={"entry_id": entry.entry_id, "seq": entry.seq},
-                    )
-                    for entry, score in sub_hits
-                ]
-            )
+        if expanded:
+            rewrite_lane = self._substrate_lane(bank_dir, expanded, req.limit)
+
+        substrate_hits = merge_ranked(
+            raw_lane,
+            rewrite_lane,
+            limit=req.limit,
+            secondary_reserve=conversational_reserve(req.limit),
+        )
+        if substrate_hits:
+            ranked_lists.append(substrate_hits)
 
         fused = rrf_fuse(ranked_lists, limit=req.limit)
 
@@ -181,6 +195,20 @@ class LayeredPipeline:
             "trajectory": trajectory,
         }
         return context, fused, meta
+
+    def _substrate_lane(
+        self, bank_dir: Path, query: str, limit: int
+    ) -> list[Recalled]:
+        """One substrate retrieval lane, as a ranked Recalled list."""
+        return [
+            Recalled(
+                text=entry.as_text(),
+                source="substrate",
+                score=score,
+                metadata={"entry_id": entry.entry_id, "seq": entry.seq},
+            )
+            for entry, score in self._substrate.search(bank_dir, query, limit=limit)
+        ]
 
     # -- L2 ------------------------------------------------------------------
 
