@@ -208,7 +208,7 @@ def test_rederive_drops_the_summary_sidecar(tmp_path: Path) -> None:
         bank_dir = tmp_path / "banks" / "b"
         SummaryStore().append(bank_dir, [_summary("whatever", "a summary")])
         out = engine.rederive(bank="b")
-        assert out["summaries_dropped"] is True
+        assert "summaries" in out["derived_dropped"]
         assert SummaryStore().load(bank_dir) == {}
     finally:
         engine.stop()
@@ -305,9 +305,13 @@ def test_the_lane_closes_the_measured_vocabulary_gap(tmp_path: Path) -> None:
             user_content="The nightly job that trims old blobs is called reaper.",
             assistant_content="Noted.",
         )
-        for filler in ("Unrelated: dashboards refresh every five minutes.",
-                       "Unrelated: we label flaky tests."):
-            engine.capture(bank="b", session_key="s", user_content=filler, assistant_content="Noted.")
+        for filler in (
+            "Unrelated: dashboards refresh every five minutes.",
+            "Unrelated: we label flaky tests.",
+        ):
+            engine.capture(
+                bank="b", session_key="s", user_content=filler, assistant_content="Noted."
+            )
 
         question = "what cleans up storage we no longer need?"
         bank_dir = tmp_path / "banks" / "b"

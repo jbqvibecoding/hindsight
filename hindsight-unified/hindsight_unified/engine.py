@@ -16,7 +16,6 @@ usable.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from .adapters import (
@@ -28,6 +27,7 @@ from .adapters import (
 )
 from .asyncrunner import AsyncRunner
 from .config import Settings
+from .distill import LESSON_FILE
 from .pipeline import LayeredPipeline
 from .pipeline.stages import RunOutcome
 from .substrate import MarkdownSubstrate, SingletonLockHeld
@@ -45,22 +45,14 @@ class UnifiedEngine:
 
         # Instantiate adapters (respecting enable flags).
         self._hindsight = (
-            HindsightCoreAdapter(self._runner)
-            if self._settings.enable_hindsight
-            else None
+            HindsightCoreAdapter(self._runner) if self._settings.enable_hindsight else None
         )
-        self._everos = (
-            EverosSubstrateAdapter() if self._settings.enable_everos else None
-        )
-        self._mempalace = (
-            MempalaceIndexAdapter() if self._settings.enable_mempalace else None
-        )
+        self._everos = EverosSubstrateAdapter() if self._settings.enable_everos else None
+        self._mempalace = MempalaceIndexAdapter() if self._settings.enable_mempalace else None
         self._openviking = (
             OpenVikingInjectionAdapter() if self._settings.enable_openviking else None
         )
-        self._memos = (
-            MemosPortabilityAdapter() if self._settings.enable_memos else None
-        )
+        self._memos = MemosPortabilityAdapter() if self._settings.enable_memos else None
 
         # Adapters that participate in capture/recall/consolidate fan-out.
         self._adapters = [
@@ -252,9 +244,7 @@ class UnifiedEngine:
     ) -> dict[str, Any]:
         """Verbatim L0 search over the substrate — exact past dialogue."""
         bank_dir = self._settings.bank_dir(bank)
-        hits = self._substrate.search(
-            bank_dir, query, limit=limit, session_key=session_key
-        )
+        hits = self._substrate.search(bank_dir, query, limit=limit, session_key=session_key)
         return {
             "results": [
                 {
@@ -343,9 +333,9 @@ class UnifiedEngine:
         # The summary sidecar is a derivative too, so it goes with the index.
         # Leaving it would rank against summaries of entries whose ids the
         # rebuild may not reproduce.
-        summaries = bank_dir / SUMMARY_FILE
-        if summaries.exists():
-            summaries.unlink()
+        for derived in (bank_dir / SUMMARY_FILE, bank_dir / LESSON_FILE):
+            if derived.exists():
+                derived.unlink()
         self._substrate.forget_caches(bank_dir)
         recovered = 0
         if self._everos is not None:
@@ -354,7 +344,7 @@ class UnifiedEngine:
             "ok": True,
             "entries_before": before,
             "entries_rebuilt": recovered,
-            "summaries_dropped": True,
+            "derived_dropped": ["summaries", "lessons"],
             "brain_reindexed": False,  # L1 re-extraction is the brain's own job
         }
 

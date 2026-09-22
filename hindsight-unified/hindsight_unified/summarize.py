@@ -212,9 +212,7 @@ class SummaryStore:
 
     # -- retrieval ----------------------------------------------------------
 
-    def search(
-        self, bank_dir: Path, query: str, *, limit: int = 8
-    ) -> list[tuple[str, float]]:
+    def search(self, bank_dir: Path, query: str, *, limit: int = 8) -> list[tuple[str, float]]:
         """BM25 over summary text. Returns ``(entry_id, score)`` — never text.
 
         Returning ids rather than summaries is the whole discipline: the caller
@@ -235,8 +233,7 @@ class SummaryStore:
         idf, avg_len = _corpus_stats([tokens for _s, tokens in docs])
 
         scored = [
-            (s.entry_id, _bm25(q_tokens, tokens, idf=idf, avg_len=avg_len))
-            for s, tokens in docs
+            (s.entry_id, _bm25(q_tokens, tokens, idf=idf, avg_len=avg_len)) for s, tokens in docs
         ]
         scored = [pair for pair in scored if pair[1] > 0.0]
         scored.sort(key=lambda pair: pair[1], reverse=True)

@@ -28,6 +28,7 @@ from pathlib import Path
 from ..adapters.base import UnifiedAdapter
 from ..adapters.mempalace_index import MempalaceIndexAdapter
 from ..adapters.openviking_injection import OpenVikingInjectionAdapter
+from ..distill import LessonStore
 from ..llm import LLMClient
 from ..substrate import MarkdownSubstrate
 from ..summarize import SummaryStore
@@ -60,9 +61,7 @@ L2_CONSOLIDATE = "L2"
 L3_PERSONA = "L3"
 
 
-def rrf_fuse(
-    ranked_lists: list[list[Recalled]], *, k: int = 60, limit: int = 8
-) -> list[Recalled]:
+def rrf_fuse(ranked_lists: list[list[Recalled]], *, k: int = 60, limit: int = 8) -> list[Recalled]:
     """Reciprocal Rank Fusion across heterogeneous adapter result lists.
 
     Fuses on *rank* (not score) so adapters with incomparable score scales —
@@ -105,6 +104,7 @@ class LayeredPipeline:
         self._openviking = openviking
         self._llm = llm if llm is not None else LLMClient()
         self._summaries = SummaryStore()
+        self._lessons = LessonStore()
         self._stages = self._build_stages()
         # Fails construction, not a later run, if the one-fatal-stage contract
         # is ever broken by adding a second.
@@ -159,9 +159,7 @@ class LayeredPipeline:
         rewrite_lane: list[Recalled] = []
         expanded = build_conversational_query(
             req.query,
-            self._substrate.recent_turns(
-                bank_dir, session_key=req.session_key, limit=RECENT_TURNS
-            ),
+            self._substrate.recent_turns(bank_dir, session_key=req.session_key, limit=RECENT_TURNS),
         )
         if expanded:
             rewrite_lane = self._substrate_lane(bank_dir, expanded, req.limit)
@@ -181,6 +179,14 @@ class LayeredPipeline:
         summary_lane = self._summary_lane(bank_dir, req.query, req.limit)
         if summary_lane:
             ranked_lists.append(summary_lane)
+
+        # Fourth lane: distilled lessons. Unlike a summary, a lesson IS shown —
+        # it is a legitimate derived memory — so it is labelled as such and
+        # carries the ids of the entries it came from, keeping the verbatim
+        # source one lookup away.
+        lesson_lane = self._lesson_lane(bank_dir, req.query, req.limit)
+        if lesson_lane:
+            ranked_lists.append(lesson_lane)
 
         fused = rrf_fuse(ranked_lists, limit=req.limit)
 
@@ -208,9 +214,7 @@ class LayeredPipeline:
         }
         return context, fused, meta
 
-    def _substrate_lane(
-        self, bank_dir: Path, query: str, limit: int
-    ) -> list[Recalled]:
+    def _substrate_lane(self, bank_dir: Path, query: str, limit: int) -> list[Recalled]:
         """One substrate retrieval lane, as a ranked Recalled list."""
         return [
             Recalled(
@@ -222,9 +226,7 @@ class LayeredPipeline:
             for entry, score in self._substrate.search(bank_dir, query, limit=limit)
         ]
 
-    def _summary_lane(
-        self, bank_dir: Path, query: str, limit: int
-    ) -> list[Recalled]:
+    def _summary_lane(self, bank_dir: Path, query: str, limit: int) -> list[Recalled]:
         """Summary hits, resolved to the verbatim entries they describe."""
         hits = self._summaries.search(bank_dir, query, limit=limit)
         if not hits:
@@ -247,6 +249,23 @@ class LayeredPipeline:
             )
         return lane
 
+    def _lesson_lane(self, bank_dir: Path, query: str, limit: int) -> list[Recalled]:
+        """Distilled lessons as a ranked lane, tagged so they are never
+        mistaken for something the user said."""
+        return [
+            Recalled(
+                text=lesson.render(),
+                source="lesson",
+                score=score,
+                fact_type="lesson",
+                metadata={
+                    "lesson_id": lesson.lesson_id,
+                    "member_entry_ids": lesson.member_entry_ids,
+                },
+            )
+            for lesson, score in self._lessons.search(bank_dir, query, limit=limit)
+        ]
+
     # -- L2 ------------------------------------------------------------------
 
     def _summarize_stage(self, bank: str, bank_dir: Path) -> bool:
@@ -263,6 +282,18 @@ class LayeredPipeline:
         if written is None:
             raise RuntimeError("summary generation aborted: LLM unreachable")
         return written > 0
+
+    def _distill_stage(self, bank: str, bank_dir: Path) -> bool:
+        """Distil the newest slice into durable lessons.
+
+        Raises on an outage so the stage reports ``errored`` and its watermark
+        stays put — an unreachable model must never mark these entries
+        distilled forever.
+        """
+        accepted = self._lessons.distill(bank_dir, self._substrate._load(bank_dir), self._llm)
+        if accepted is None:
+            raise RuntimeError("distillation aborted: LLM unreachable")
+        return accepted > 0
 
     def _build_stages(self) -> list[Stage]:
         """One stage per adapter, plus the integrity stage that may fail a run.
@@ -295,9 +326,15 @@ class LayeredPipeline:
                 # Gated before any cost: with no model configured the whole
                 # lane is simply absent, which is a supported deployment
                 # rather than a degraded one.
-                gate=lambda bank, bank_dir: (
-                    "" if self._llm.available() else "no_llm_configured"
-                ),
+                gate=lambda bank, bank_dir: "" if self._llm.available() else "no_llm_configured",
+            )
+        )
+
+        stages.append(
+            Stage(
+                name="distill",
+                run=self._distill_stage,
+                gate=lambda bank, bank_dir: "" if self._llm.available() else "no_llm_configured",
             )
         )
 
