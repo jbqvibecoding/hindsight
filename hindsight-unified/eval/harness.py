@@ -44,6 +44,7 @@ from hindsight_unified.engine import UnifiedEngine  # noqa: E402
 
 EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_CASES = EVAL_DIR / "cases.jsonl"
+DEFAULT_DISTRACTORS = EVAL_DIR / "distractors.jsonl"
 DEFAULT_RESULTS = EVAL_DIR / "results"
 BASELINE_PATH = EVAL_DIR / "baseline.json"
 
@@ -113,7 +114,30 @@ def _fresh_engine(root: Path) -> UnifiedEngine:
     return engine
 
 
-def answer_cases(cases: list[Case], root: Path, *, cache_dir: Path | None = None) -> list[dict]:
+def load_distractors(path: Path = DEFAULT_DISTRACTORS) -> list[dict[str, str]]:
+    """Unrelated turns seeded into every case bank before the case's own.
+
+    Without them the harness cannot see a ranking change at all: a bank holding
+    three entries against a limit of eight returns everything, so relevance
+    never binds. This was not theory — BM25 was measured against the first
+    baseline and moved all three metrics by exactly 0.0000, because the
+    instrument could not tell ranking from retrieval. The distractors share the
+    domain's vocabulary so they compete for terms rather than being trivially
+    filtered.
+    """
+    if not path.exists():
+        return []
+    with open(path, encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh if line.strip()]
+
+
+def answer_cases(
+    cases: list[Case],
+    root: Path,
+    *,
+    cache_dir: Path | None = None,
+    distractors: list[dict[str, str]] | None = None,
+) -> list[dict]:
     """Seed one bank per case, recall, and record what was retrieved.
 
     Retrieval and answering are kept apart: ``retrieval_context`` is stored as a
@@ -122,6 +146,7 @@ def answer_cases(cases: list[Case], root: Path, *, cache_dir: Path | None = None
     capture it at all.
     """
     engine = _fresh_engine(root)
+    noise = load_distractors() if distractors is None else distractors
     rows: list[dict[str, Any]] = []
     try:
         for case in cases:
@@ -131,6 +156,15 @@ def answer_cases(cases: list[Case], root: Path, *, cache_dir: Path | None = None
                 continue
             try:
                 bank = f"eval-{case.case_id}"
+                # Distractors first, so the case's own turns are also the most
+                # recent — the ordering metric must not be won by accident.
+                for turn in noise:
+                    engine.capture(
+                        bank=bank,
+                        session_key="eval-noise",
+                        user_content=turn.get("user", ""),
+                        assistant_content=turn.get("assistant", ""),
+                    )
                 for turn in case.seed_turns:
                     engine.capture(
                         bank=bank,

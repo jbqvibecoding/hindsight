@@ -32,11 +32,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import threading
 import time
 import uuid
+from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,6 +64,45 @@ _STOPWORDS = frozenset(
 
 def _tokenize(text: str) -> list[str]:
     return [t.lower() for t in _TOKEN_RE.findall(text or "")]
+
+
+# Okapi BM25 parameters. k1 controls how fast term frequency saturates, b how
+# strongly document length is normalised; these are the standard defaults and
+# there is no corpus here large enough to justify tuning them.
+_BM25_K1 = 1.5
+_BM25_B = 0.75
+
+
+def _corpus_stats(documents: list[list[str]]) -> tuple[dict[str, float], float]:
+    """Per-term IDF and mean document length for one bank."""
+    total = len(documents)
+    document_frequency: Counter[str] = Counter()
+    total_length = 0
+    for tokens in documents:
+        total_length += len(tokens)
+        document_frequency.update(set(tokens))
+    idf = {
+        term: math.log(1 + (total - freq + 0.5) / (freq + 0.5))
+        for term, freq in document_frequency.items()
+    }
+    return idf, (total_length / total if total else 0.0)
+
+
+def _bm25(
+    query_terms: set[str], tokens: list[str], *, idf: dict[str, float], avg_len: float
+) -> float:
+    """BM25 score of one document, summed over the distinct query terms."""
+    if not tokens or avg_len <= 0:
+        return 0.0
+    frequencies = Counter(tokens)
+    length_norm = _BM25_K1 * (1 - _BM25_B + _BM25_B * len(tokens) / avg_len)
+    score = 0.0
+    for term in query_terms:
+        tf = frequencies.get(term, 0)
+        if tf == 0:
+            continue
+        score += idf.get(term, 0.0) * (tf * (_BM25_K1 + 1)) / (tf + length_norm)
+    return score
 
 
 def content_hash(user: str, assistant: str) -> str:
@@ -447,11 +488,17 @@ class MarkdownSubstrate:
     def search(
         self, bank_dir: Path, query: str, limit: int = 8, session_key: str = ""
     ) -> list[tuple[SubstrateEntry, float]]:
-        """Keyword-overlap search over verbatim entries.
+        """Okapi BM25 over verbatim entries. No model, no network.
 
-        A tiny tf scorer with a recency tie-breaker. No model, no network — the
-        point is guaranteed availability and exactness, not semantic nuance
-        (that is what the Hindsight brain adds on top).
+        Replaces a plain term-overlap score, which had neither of the two things
+        that make lexical retrieval work: **IDF**, so a rare term counts for more
+        than a common one, and **length normalisation** that saturates, so a long
+        entry cannot win by sheer term count. Corpus statistics come from the
+        bank being searched — the entries are loaded for scoring anyway, so this
+        costs one extra pass and no persistence.
+
+        The point of this layer remains guaranteed availability and exactness,
+        not semantic nuance; that is what the Hindsight brain adds on top.
         """
         q_tokens = _tokenize(query)
         q_set = {t for t in q_tokens if t not in _STOPWORDS}
@@ -459,19 +506,25 @@ class MarkdownSubstrate:
             q_set = set(q_tokens)
         if not q_set:
             return []
-        entries = self._load(bank_dir)
+
+        entries = [
+            e
+            for e in self._load(bank_dir)
+            if not session_key or e.session_key == session_key
+        ]
+        docs = [(e, _tokenize(e.as_text())) for e in entries]
+        docs = [(e, tokens) for e, tokens in docs if tokens]
+        if not docs:
+            return []
+
+        idf, avg_len = _corpus_stats([tokens for _e, tokens in docs])
+
         scored: list[tuple[SubstrateEntry, float]] = []
-        for e in entries:
-            if session_key and e.session_key != session_key:
+        for entry, tokens in docs:
+            score = _bm25(q_set, tokens, idf=idf, avg_len=avg_len)
+            if score <= 0.0:
                 continue
-            doc = _tokenize(e.as_text())
-            if not doc:
-                continue
-            overlap = sum(1 for t in doc if t in q_set)
-            if overlap == 0:
-                continue
-            # tf-ish score normalized by doc length, nudged by recency.
-            score = overlap / (len(doc) ** 0.5)
-            scored.append((e, score))
+            scored.append((entry, score))
+        # Recency breaks ties only; relevance still decides selection.
         scored.sort(key=lambda pair: (pair[1], pair[0].ts), reverse=True)
         return scored[:limit]
