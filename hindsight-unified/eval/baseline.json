@@ -24,14 +24,6 @@
       "ci_upper": 0.9658,
       "n": 117,
       "run_std": 0.0
-    },
-    "no_false_recall": {
-      "metric": "no_false_recall",
-      "mean": 0.0,
-      "ci_lower": 0.0,
-      "ci_upper": 0.0,
-      "n": 9,
-      "run_std": 0.0
     }
   },
   "by_category": {
@@ -77,8 +69,7 @@
     },
     "no_answer": {
       "abstention": 1.0,
-      "ordering": 1.0,
-      "no_false_recall": 0.0
+      "ordering": 1.0
     },
     "predecessor_query": {
       "abstention": 1.0,

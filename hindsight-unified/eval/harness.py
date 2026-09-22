@@ -252,11 +252,11 @@ def score_rows(rows: list[dict], cases: list[Case], *, judge: Judge | None = Non
             "ordering": M.ordering_correct(context, case.must_precede),
         }
         # A no-answer case has nothing to recall, so recall_hit would score a
-        # meaningless 1.0 for it; and every other case has an answer, so
-        # no_false_recall does not apply. Each metric covers its own half.
-        if case.expect_nothing:
-            scored["no_false_recall"] = M.no_false_recall(context, expect_nothing=True)
-        else:
+        # meaningless 1.0 for it. It is also NOT scored for false recall: that
+        # metric was tried and removed, because suppressing a no-answer recall
+        # is not achievable with a lexical signal — see eval/README.md. The
+        # cases stay in the set as probes for when a semantic lane lands.
+        if not case.expect_nothing:
             scored["recall_hit"] = M.recall_hit(context, case.must_contain)
         if judge is not None and judge.available():
             score, explanation = judge.score(

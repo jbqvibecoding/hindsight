@@ -140,15 +140,26 @@ def recall_hit(context: str, must_contain: list[str]) -> float:
 def no_false_recall(context: str, *, expect_nothing: bool) -> float | None:
     """1.0 when a question memory cannot answer surfaces nothing.
 
-    Returns ``None`` for a case that *does* have an answer, so it is excluded
-    rather than scored — the metric only means something where the right
-    behaviour is silence.
+    **Not currently scored by the harness.** Kept because the measurement is
+    correct and becomes meaningful the moment a semantic lane exists — but with
+    only a lexical signal the requirement it encodes is unachievable, so
+    reporting it would pin a metric at 0.00 forever. Three discriminators were
+    measured and all three failed:
 
-    This is the gap ``abstention`` cannot see. Abstention checks that a specific
-    wrong string is absent; this checks that the system does not hand back its
-    top-k regardless of score, which a threshold-free lexical retriever does by
-    construction. Presenting unrelated entries under a "here is what I
-    remember" header is a confident wrong answer, not a neutral one.
+    * *Raw-question lane empty* — fails: legitimate anaphoric follow-ups
+      ("who should I ask instead?") also match zero question terms.
+    * *Absolute fused score* — fails: RRF scores are ``1/(k+rank+1)`` by
+      construction, identical across queries, and carry no relevance
+      information at all.
+    * *Absolute BM25 score* — fails, decisively: a no-answer question scored
+      **20.31** at the top against **18.58** for a follow-up that should
+      answer. The distributions overlap because the rewrite query *contains the
+      recent turns verbatim*, so those turns score highly against it whether or
+      not they relate to the question. The score measures similarity to the
+      borrowed text, not relevance to the question.
+
+    Returns ``None`` for a case that has an answer, so it is excluded rather
+    than scored — the metric only means something where silence is correct.
     """
     if not expect_nothing:
         return None
