@@ -28,7 +28,9 @@ from pathlib import Path
 from ..adapters.base import UnifiedAdapter
 from ..adapters.mempalace_index import MempalaceIndexAdapter
 from ..adapters.openviking_injection import OpenVikingInjectionAdapter
+from ..llm import LLMClient
 from ..substrate import MarkdownSubstrate
+from ..summarize import SummaryStore
 from ..types import CaptureEvent, Recalled, RecallRequest
 from .conversational import (
     RECENT_TURNS,
@@ -95,11 +97,14 @@ class LayeredPipeline:
         *,
         mempalace: MempalaceIndexAdapter | None = None,
         openviking: OpenVikingInjectionAdapter | None = None,
+        llm: LLMClient | None = None,
     ) -> None:
         self._substrate = substrate
         self._adapters = adapters
         self._mempalace = mempalace
         self._openviking = openviking
+        self._llm = llm if llm is not None else LLMClient()
+        self._summaries = SummaryStore()
         self._stages = self._build_stages()
         # Fails construction, not a later run, if the one-fatal-stage contract
         # is ever broken by adding a second.
@@ -170,6 +175,13 @@ class LayeredPipeline:
         if substrate_hits:
             ranked_lists.append(substrate_hits)
 
+        # Third lane: the derived summaries. It votes on ranking only — every
+        # hit is dereferenced back to its verbatim entry before it can be
+        # shown, so a summary can change what surfaces but never what is read.
+        summary_lane = self._summary_lane(bank_dir, req.query, req.limit)
+        if summary_lane:
+            ranked_lists.append(summary_lane)
+
         fused = rrf_fuse(ranked_lists, limit=req.limit)
 
         # Order for presentation once, before the cards are cut, so card [0]
@@ -210,7 +222,47 @@ class LayeredPipeline:
             for entry, score in self._substrate.search(bank_dir, query, limit=limit)
         ]
 
+    def _summary_lane(
+        self, bank_dir: Path, query: str, limit: int
+    ) -> list[Recalled]:
+        """Summary hits, resolved to the verbatim entries they describe."""
+        hits = self._summaries.search(bank_dir, query, limit=limit)
+        if not hits:
+            return []
+        by_id = {e.entry_id: e for e in self._substrate._load(bank_dir)}
+        lane: list[Recalled] = []
+        for entry_id, score in hits:
+            entry = by_id.get(entry_id)
+            if entry is None:
+                # The summary outlived its entry; it is a derivative, so the
+                # missing source wins and the hit is dropped.
+                continue
+            lane.append(
+                Recalled(
+                    text=entry.as_text(),
+                    source="summary",
+                    score=score,
+                    metadata={"entry_id": entry.entry_id, "seq": entry.seq},
+                )
+            )
+        return lane
+
     # -- L2 ------------------------------------------------------------------
+
+    def _summarize_stage(self, bank: str, bank_dir: Path) -> bool:
+        """Derive retrieval summaries for entries that lack a current one.
+
+        Raises on an LLM outage so the stage reports ``errored`` and its
+        watermark stays put: an unreachable model is not the same as "nothing
+        left to summarise", and sealing entries on the strength of calls that
+        never ran would leave them permanently unsummarised.
+        """
+        written = self._summaries.generate_missing(
+            bank_dir, self._substrate._load(bank_dir), self._llm
+        )
+        if written is None:
+            raise RuntimeError("summary generation aborted: LLM unreachable")
+        return written > 0
 
     def _build_stages(self) -> list[Stage]:
         """One stage per adapter, plus the integrity stage that may fail a run.
@@ -235,6 +287,19 @@ class LayeredPipeline:
                     ignores_watermark=True,
                 )
             )
+
+        stages.append(
+            Stage(
+                name="summarize",
+                run=self._summarize_stage,
+                # Gated before any cost: with no model configured the whole
+                # lane is simply absent, which is a supported deployment
+                # rather than a degraded one.
+                gate=lambda bank, bank_dir: (
+                    "" if self._llm.available() else "no_llm_configured"
+                ),
+            )
+        )
 
         for adapter in self._adapters:
             if adapter.name == "everos":

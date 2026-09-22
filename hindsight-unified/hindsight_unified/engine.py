@@ -31,6 +31,7 @@ from .config import Settings
 from .pipeline import LayeredPipeline
 from .pipeline.stages import RunOutcome
 from .substrate import MarkdownSubstrate, SingletonLockHeld
+from .summarize import SUMMARY_FILE
 from .types import CaptureEvent, RecallMarker, RecallRequest
 
 logger = logging.getLogger(__name__)
@@ -339,6 +340,12 @@ class UnifiedEngine:
         before = self._substrate.count(bank_dir)
         if index.exists():
             index.unlink()
+        # The summary sidecar is a derivative too, so it goes with the index.
+        # Leaving it would rank against summaries of entries whose ids the
+        # rebuild may not reproduce.
+        summaries = bank_dir / SUMMARY_FILE
+        if summaries.exists():
+            summaries.unlink()
         self._substrate.forget_caches(bank_dir)
         recovered = 0
         if self._everos is not None:
@@ -347,6 +354,7 @@ class UnifiedEngine:
             "ok": True,
             "entries_before": before,
             "entries_rebuilt": recovered,
+            "summaries_dropped": True,
             "brain_reindexed": False,  # L1 re-extraction is the brain's own job
         }
 
