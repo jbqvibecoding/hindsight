@@ -289,9 +289,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Unified memory eval harness")
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
-    parser.add_argument(
-        "--runs", type=int, default=3, help="repeats; one run is not a measurement"
-    )
+    parser.add_argument("--runs", type=int, default=3, help="repeats; one run is not a measurement")
     parser.add_argument("--only", nargs="*", default=None, help="pin specific case ids")
     parser.add_argument("--no-judge", action="store_true", help="deterministic metrics only")
     parser.add_argument("--write-baseline", action="store_true")

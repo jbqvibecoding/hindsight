@@ -15,7 +15,6 @@ from hindsight_unified.adapters.openviking_injection import OpenVikingInjectionA
 from hindsight_unified.substrate import MarkdownSubstrate
 from hindsight_unified.types import Recalled
 
-
 # -- EverOS: index rebuilt from md truth (crash recovery) ---------------------
 
 

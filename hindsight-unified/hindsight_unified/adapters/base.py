@@ -20,7 +20,16 @@ logger = logging.getLogger(__name__)
 
 
 class UnifiedAdapter(ABC):
-    """Base class for a contributor adapter."""
+    """Base class for a contributor adapter.
+
+    Only ``name`` is abstract. Every hook below is optional with a no-op or
+    empty default, which is what lets an adapter contribute to one phase and
+    ignore the rest — and what lets a missing engine degrade to the verbatim
+    substrate instead of failing. So B027 ("empty method in an ABC, but not
+    abstract") is describing the intended design, not a defect.
+    """
+
+    # ruff: noqa: B027
 
     @property
     @abstractmethod

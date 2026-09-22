@@ -68,8 +68,12 @@ def test_append_position_beats_the_timestamp_within_one_millisecond() -> None:
     adapter = _adapter()
     same_ms = "0001700000000"
     recalled = [
-        Recalled(text="older", source="substrate", metadata={"seq": 3, "entry_id": f"{same_ms}-aaa"}),
-        Recalled(text="newer", source="substrate", metadata={"seq": 4, "entry_id": f"{same_ms}-bbb"}),
+        Recalled(
+            text="older", source="substrate", metadata={"seq": 3, "entry_id": f"{same_ms}-aaa"}
+        ),
+        Recalled(
+            text="newer", source="substrate", metadata={"seq": 4, "entry_id": f"{same_ms}-bbb"}
+        ),
     ]
     context, _ = adapter.assemble(recalled)
     assert context.index("newer") < context.index("older")
@@ -101,10 +105,16 @@ def test_index_cards_and_body_agree_on_what_leads(tmp_path: Path) -> None:
     engine = _engine(tmp_path)
     try:
         engine.capture(
-            bank="b", session_key="s", user_content="I always indent with tabs", assistant_content="ok"
+            bank="b",
+            session_key="s",
+            user_content="I always indent with tabs",
+            assistant_content="ok",
         )
         engine.capture(
-            bank="b", session_key="s", user_content="we now indent with 4 spaces", assistant_content="ok"
+            bank="b",
+            session_key="s",
+            user_content="we now indent with 4 spaces",
+            assistant_content="ok",
         )
         context = engine.recall(bank="b", query="indent")["context"]
         card_zero = next(line for line in context.splitlines() if line.startswith("[0]"))
@@ -122,7 +132,10 @@ def test_a_superseded_fact_stays_retrievable_but_does_not_lead(tmp_path: Path) -
             bank="b", session_key="s", user_content="deploy to us-east-1", assistant_content="ok"
         )
         engine.capture(
-            bank="b", session_key="s", user_content="deploy to eu-central-1 now", assistant_content="ok"
+            bank="b",
+            session_key="s",
+            user_content="deploy to eu-central-1 now",
+            assistant_content="ok",
         )
         context = engine.recall(bank="b", query="deploy region")["context"]
         # Nothing is deleted — history and provenance stay readable...

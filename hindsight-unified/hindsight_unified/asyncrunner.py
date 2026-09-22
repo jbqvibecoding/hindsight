@@ -12,7 +12,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from typing import Any, Coroutine, TypeVar
+from collections.abc import Coroutine
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +25,7 @@ class AsyncRunner:
 
     def __init__(self) -> None:
         self._loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(
-            target=self._run, daemon=True, name="unified-async-loop"
-        )
+        self._thread = threading.Thread(target=self._run, daemon=True, name="unified-async-loop")
         self._thread.start()
 
     def _run(self) -> None:

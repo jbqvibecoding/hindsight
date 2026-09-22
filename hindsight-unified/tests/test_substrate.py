@@ -14,9 +14,7 @@ def _make(tmp_path: Path) -> tuple[MarkdownSubstrate, Path]:
 
 def test_append_writes_md_and_index(tmp_path: Path) -> None:
     sub, bank = _make(tmp_path)
-    entry_id = sub.append(
-        bank, session_key="s1", user="hello world", assistant="hi there"
-    )
+    entry_id = sub.append(bank, session_key="s1", user="hello world", assistant="hi there")
     assert entry_id
     md_files = list((bank / "log").glob("*.md"))
     assert len(md_files) == 1

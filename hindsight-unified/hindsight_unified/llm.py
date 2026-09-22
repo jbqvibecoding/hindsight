@@ -19,6 +19,7 @@ Two conventions the rest of the package relies on:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -115,10 +116,10 @@ class LLMClient:
                 return _text_of(payload)
             except urllib.error.HTTPError as e:
                 detail = ""
-                try:
+                # The body is for the log line only, so failing to read it must
+                # not mask the HTTP error we are actually handling.
+                with contextlib.suppress(Exception):
                     detail = e.read().decode("utf-8", errors="replace")[:300]
-                except Exception:  # noqa: BLE001
-                    pass
                 last_error = e
                 # 4xx other than 429 will not get better by retrying.
                 if e.code != 429 and 400 <= e.code < 500:

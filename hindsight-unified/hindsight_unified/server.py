@@ -86,45 +86,65 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.rstrip("/") or "/"
         try:
             if path == "/recall":
-                self._send(200, engine.recall(
-                    bank=_bank_of(body),
-                    query=body.get("query", ""),
-                    session_key=body.get("session_key", ""),
-                    user_id=body.get("user_id", ""),
-                    limit=int(body.get("limit", 8) or 8),
-                    fact_type=body.get("type", "") or body.get("fact_type", ""),
-                    question_date=body.get("question_date", ""),
-                ))
+                self._send(
+                    200,
+                    engine.recall(
+                        bank=_bank_of(body),
+                        query=body.get("query", ""),
+                        session_key=body.get("session_key", ""),
+                        user_id=body.get("user_id", ""),
+                        limit=int(body.get("limit", 8) or 8),
+                        fact_type=body.get("type", "") or body.get("fact_type", ""),
+                        question_date=body.get("question_date", ""),
+                    ),
+                )
             elif path == "/capture":
-                self._send(200, engine.capture(
-                    bank=_bank_of(body),
-                    session_key=body.get("session_key", ""),
-                    user_content=body.get("user_content", ""),
-                    assistant_content=body.get("assistant_content", ""),
-                    user_id=body.get("user_id", ""),
-                ))
+                self._send(
+                    200,
+                    engine.capture(
+                        bank=_bank_of(body),
+                        session_key=body.get("session_key", ""),
+                        user_content=body.get("user_content", ""),
+                        assistant_content=body.get("assistant_content", ""),
+                        user_id=body.get("user_id", ""),
+                    ),
+                )
             elif path == "/search/memories":
-                self._send(200, engine.recall(
-                    bank=_bank_of(body),
-                    query=body.get("query", ""),
-                    limit=int(body.get("limit", 5) or 5),
-                    fact_type=body.get("type", ""),
-                ))
+                self._send(
+                    200,
+                    engine.recall(
+                        bank=_bank_of(body),
+                        query=body.get("query", ""),
+                        limit=int(body.get("limit", 5) or 5),
+                        fact_type=body.get("type", ""),
+                    ),
+                )
             elif path == "/search/conversations":
-                self._send(200, engine.search_conversations(
-                    bank=_bank_of(body),
-                    query=body.get("query", ""),
-                    limit=int(body.get("limit", 5) or 5),
-                    session_key=body.get("session_key", ""),
-                ))
+                self._send(
+                    200,
+                    engine.search_conversations(
+                        bank=_bank_of(body),
+                        query=body.get("query", ""),
+                        limit=int(body.get("limit", 5) or 5),
+                        session_key=body.get("session_key", ""),
+                    ),
+                )
             elif path == "/session/end":
-                self._send(200, engine.end_session(
-                    bank=_bank_of(body), session_key=body.get("session_key", ""),
-                ))
+                self._send(
+                    200,
+                    engine.end_session(
+                        bank=_bank_of(body),
+                        session_key=body.get("session_key", ""),
+                    ),
+                )
             elif path == "/reflect":
-                self._send(200, engine.reflect(
-                    bank=_bank_of(body), query=body.get("query", ""),
-                ))
+                self._send(
+                    200,
+                    engine.reflect(
+                        bank=_bank_of(body),
+                        query=body.get("query", ""),
+                    ),
+                )
             elif path == "/rederive":
                 # Drop the derived index and rebuild it from the md truth. The
                 # verbatim logs are untouched, so this is safe to call after any

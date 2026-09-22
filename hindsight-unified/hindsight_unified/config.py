@@ -98,7 +98,7 @@ class Settings:
     consolidate_min_seconds: float = 900.0
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             host=_host(),
             port=_port(),
@@ -109,9 +109,7 @@ class Settings:
             enable_openviking=_bool("UNIFIED_MEMORY_ENABLE_OPENVIKING", True),
             enable_memos=_bool("UNIFIED_MEMORY_ENABLE_MEMOS", True),
             consolidate_min_entries=_int("UNIFIED_MEMORY_CONSOLIDATE_MIN_ENTRIES", 20),
-            consolidate_min_seconds=float(
-                _int("UNIFIED_MEMORY_CONSOLIDATE_MIN_SECONDS", 900)
-            ),
+            consolidate_min_seconds=float(_int("UNIFIED_MEMORY_CONSOLIDATE_MIN_SECONDS", 900)),
         )
 
     def bank_dir(self, bank: str) -> Path:

@@ -208,9 +208,7 @@ def test_concurrent_large_appends_keep_entries_intact(tmp_path: Path) -> None:
         assert other * 40 not in entry.assistant
 
     # The markdown log — the truth — must parse back to the same count.
-    md = "".join(
-        path.read_text(encoding="utf-8") for path in sorted((bank / "log").glob("*.md"))
-    )
+    md = "".join(path.read_text(encoding="utf-8") for path in sorted((bank / "log").glob("*.md")))
     assert md.count("### ") == 24
 
 
@@ -229,8 +227,10 @@ def test_singleton_lock_excludes_a_second_owner(tmp_path: Path) -> None:
 def test_bank_lock_is_reentrant_within_a_thread(tmp_path: Path) -> None:
     sub = MarkdownSubstrate(tmp_path)
     bank = tmp_path / "bank"
-    with sub._bank_lock(bank):
-        # A nested append must not deadlock on a lock this thread already holds.
+    # Deliberately nested rather than combined into one `with`: the nesting IS
+    # what is under test, since a nested append must not deadlock on a lock
+    # this thread already holds.
+    with sub._bank_lock(bank):  # noqa: SIM117
         with sub._bank_lock(bank):
             pass
     assert sub.append(bank, session_key="s", user="x", assistant="y")

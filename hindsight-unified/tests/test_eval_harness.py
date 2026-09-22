@@ -16,7 +16,6 @@ import pytest
 from eval import metrics as M
 from eval.harness import Case, answer_cases, load_cases, score_rows
 
-
 # -- scorers -------------------------------------------------------------------
 
 
@@ -135,7 +134,9 @@ def test_none_scores_are_excluded_not_counted_as_zero() -> None:
 
 
 def _aggregate_at(mean: float) -> M.Aggregate:
-    rows = [{"case_id": f"c{i}", "category": "x", "metrics": {"recall_hit": mean}} for i in range(5)]
+    rows = [
+        {"case_id": f"c{i}", "category": "x", "metrics": {"recall_hit": mean}} for i in range(5)
+    ]
     return M.aggregate([rows])
 
 
@@ -257,6 +258,7 @@ def test_baseline_on_disk_is_loadable_and_has_the_retrieval_metrics() -> None:
     )
     assert baseline["runs"] >= 3, "a baseline from a single run is not a measurement"
     assert {"recall_hit", "ordering", "abstention"} <= set(baseline["metrics"])
+
 
 def test_anchors_tolerate_inflections() -> None:
     """The system retrieved these and ranked them first; only the scorer disagreed."""

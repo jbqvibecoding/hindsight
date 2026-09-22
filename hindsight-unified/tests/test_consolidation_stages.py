@@ -50,9 +50,7 @@ def _engine(tmp_path: Path, **overrides) -> UnifiedEngine:
 def test_two_fatal_stages_is_rejected() -> None:
     noop = lambda bank, bank_dir: True  # noqa: E731
     with pytest.raises(AssertionError, match="at most one fatal"):
-        validate_fatal_stage_policy(
-            [Stage("a", noop, fatal=True), Stage("b", noop, fatal=True)]
-        )
+        validate_fatal_stage_policy([Stage("a", noop, fatal=True), Stage("b", noop, fatal=True)])
 
 
 def test_zero_fatal_stages_is_allowed(caplog: pytest.LogCaptureFixture) -> None:

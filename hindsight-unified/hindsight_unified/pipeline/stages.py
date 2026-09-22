@@ -33,7 +33,7 @@ import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 _STATE_FILE = "consolidate.json"
 
 
-class StageStatus(str, Enum):
+class StageStatus(StrEnum):
     COMPLETED = "completed"
     # Nothing new since this stage's watermark. Distinct from COMPLETED so a
     # caller can tell "ran and did work" from "ran and had nothing to do".
@@ -51,7 +51,7 @@ class StageStatus(str, Enum):
     ERRORED = "errored"
 
 
-class RunOutcome(str, Enum):
+class RunOutcome(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     # Terminal state for a run that executed nothing. Without it, a reader
@@ -239,7 +239,9 @@ def debounce(
 # -- execution -----------------------------------------------------------------
 
 
-def execute_stage(stage: Stage, bank: str, bank_dir: Path, entries: int, state: dict) -> StageResult:
+def execute_stage(
+    stage: Stage, bank: str, bank_dir: Path, entries: int, state: dict
+) -> StageResult:
     """Run one stage. Never raises for a non-fatal stage."""
     if stage.gate is not None:
         try:

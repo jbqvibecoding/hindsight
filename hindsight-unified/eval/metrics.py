@@ -198,12 +198,8 @@ def ordering_correct(context: str, must_precede: list[str]) -> float:
     if len(must_precede) != 2:
         return 1.0
     blocks = context_blocks(context)
-    current = next(
-        (i for i, b in enumerate(blocks) if contains_anchor(b, must_precede[0])), -1
-    )
-    stale = next(
-        (i for i, b in enumerate(blocks) if contains_anchor(b, must_precede[1])), -1
-    )
+    current = next((i for i, b in enumerate(blocks) if contains_anchor(b, must_precede[0])), -1)
+    stale = next((i for i, b in enumerate(blocks) if contains_anchor(b, must_precede[1])), -1)
     if current < 0:
         return 0.0  # the current fact was not recalled at all
     if stale < 0:
@@ -308,9 +304,7 @@ def validate_runs(runs: list[list[dict[str, Any]]]) -> None:
     reference = [row.get("case_id") for row in runs[0]]
     for index, run in enumerate(runs[1:], start=1):
         if [row.get("case_id") for row in run] != reference:
-            raise ValueError(
-                f"run {index} covers different cases than run 0 — not comparable"
-            )
+            raise ValueError(f"run {index} covers different cases than run 0 — not comparable")
 
 
 def aggregate(runs: list[list[dict[str, Any]]]) -> Aggregate:
@@ -320,7 +314,7 @@ def aggregate(runs: list[list[dict[str, Any]]]) -> Aggregate:
     metric_names: list[str] = []
     for run in runs:
         for row in run:
-            for name in (row.get("metrics") or {}):
+            for name in row.get("metrics") or {}:
                 if name not in metric_names:
                     metric_names.append(name)
 
@@ -399,7 +393,9 @@ def check_regression(
         summary = current.metrics.get(name)
         recorded = baseline_metrics.get(name)
         if summary is None or not recorded:
-            findings.append(f"{name}: missing from {'current run' if summary is None else 'baseline'}")
+            findings.append(
+                f"{name}: missing from {'current run' if summary is None else 'baseline'}"
+            )
             continue
         floor = float(recorded.get("ci_lower", recorded.get("mean", 0.0)))
         if summary.mean < floor:

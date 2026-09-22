@@ -132,9 +132,7 @@ class OpenVikingInjectionAdapter(UnifiedAdapter):
     # independently (user_preferences/constants.py:60 and
     # session_context_builder.py:70), which is a strong hint that ordering plus
     # a stated rule beats inference at this price point.
-    CONFLICT_RULE = (
-        "Most recent first. When two entries conflict, follow the one nearer the top."
-    )
+    CONFLICT_RULE = "Most recent first. When two entries conflict, follow the one nearer the top."
 
     @staticmethod
     def _recency_key(r: Recalled) -> str:

@@ -30,6 +30,7 @@ sidecar alongside a hung one):
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
@@ -39,10 +40,11 @@ import threading
 import time
 import uuid
 from collections import Counter
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 try:  # POSIX advisory locking; absent on Windows.
     import fcntl
@@ -56,9 +58,60 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9_一-鿿]+")
 # Common function words carry no recall signal; matching on them lets an
 # unrelated entry tie with a genuinely relevant one in the lean scorer.
 _STOPWORDS = frozenset(
-    "a an and are as at be but by do does did for from has have he her his i in is it its "
-    "me my of on or our she so that the their them they this to us was we were what when "
-    "where which who will with you your".split()
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "but",
+        "by",
+        "do",
+        "does",
+        "did",
+        "for",
+        "from",
+        "has",
+        "have",
+        "he",
+        "her",
+        "his",
+        "i",
+        "in",
+        "is",
+        "it",
+        "its",
+        "me",
+        "my",
+        "of",
+        "on",
+        "or",
+        "our",
+        "she",
+        "so",
+        "that",
+        "the",
+        "their",
+        "them",
+        "they",
+        "this",
+        "to",
+        "us",
+        "was",
+        "we",
+        "were",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "will",
+        "with",
+        "you",
+        "your",
+    ]
 )
 
 
@@ -118,9 +171,7 @@ def content_hash(user: str, assistant: str) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def derive_entry_id(
-    *, ts: float, bank: str, session_key: str, digest: str, occurrence: int
-) -> str:
+def derive_entry_id(*, ts: float, bank: str, session_key: str, digest: str, occurrence: int) -> str:
     """Deterministic, time-sortable entry id.
 
     The prefix is the zero-padded ms timestamp, so ids sort lexicographically by
@@ -250,14 +301,12 @@ class MarkdownSubstrate:
         fd, self._singleton_fd = self._singleton_fd, None
         if fd is None or not _HAVE_FCNTL:
             return
-        try:
+        # Both are best-effort: closing the fd releases the lock anyway, and a
+        # dying process has it released by the kernel.
+        with contextlib.suppress(OSError):
             fcntl.flock(fd, fcntl.LOCK_UN)
-        except OSError:
-            pass
-        try:
+        with contextlib.suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
 
     # -- write ---------------------------------------------------------------
 
@@ -528,9 +577,7 @@ class MarkdownSubstrate:
             return []
 
         entries = [
-            e
-            for e in self._load(bank_dir)
-            if not session_key or e.session_key == session_key
+            e for e in self._load(bank_dir) if not session_key or e.session_key == session_key
         ]
         docs = [(e, _tokenize(e.as_text())) for e in entries]
         docs = [(e, tokens) for e, tokens in docs if tokens]

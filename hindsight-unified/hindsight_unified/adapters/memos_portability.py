@@ -80,7 +80,9 @@ class MemosPortabilityAdapter(UnifiedAdapter):
         try:
             from memos import GeneralMemCube  # type: ignore
 
-            cube = GeneralMemCube(config=None) if _accepts_config(GeneralMemCube) else GeneralMemCube()
+            cube = (
+                GeneralMemCube(config=None) if _accepts_config(GeneralMemCube) else GeneralMemCube()
+            )
             cube_dir = export_dir / "memcube"
             cube_dir.mkdir(parents=True, exist_ok=True)
             cube.dump(str(cube_dir))  # type: ignore[attr-defined]
