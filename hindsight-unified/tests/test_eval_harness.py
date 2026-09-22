@@ -43,15 +43,33 @@ def test_abstention_catches_a_leak() -> None:
     assert M.must_not_appear("the password is hunter2", ["hunter2"]) == 0.0
 
 
+def _ctx(*entries: str) -> str:
+    return "\n".join(f"- (substrate) {e}" for e in entries)
+
+
 def test_ordering_scores_recency_not_absence() -> None:
     # A superseded fact may legitimately still be present — what matters is
-    # that the current one leads.
-    assert M.ordering_correct("4 spaces ... tabs", ["4 spaces", "tabs"]) == 1.0
-    assert M.ordering_correct("tabs ... 4 spaces", ["4 spaces", "tabs"]) == 0.0
+    # that the entry holding the current one leads.
+    assert M.ordering_correct(_ctx("4 spaces now", "I use tabs"), ["4 spaces", "tabs"]) == 1.0
+    assert M.ordering_correct(_ctx("I use tabs", "4 spaces now"), ["4 spaces", "tabs"]) == 0.0
     # Only the current fact present: trivially ordered.
-    assert M.ordering_correct("4 spaces", ["4 spaces", "tabs"]) == 1.0
+    assert M.ordering_correct(_ctx("4 spaces now"), ["4 spaces", "tabs"]) == 1.0
     # Current fact missing entirely is the worse failure, not an exemption.
-    assert M.ordering_correct("tabs", ["4 spaces", "tabs"]) == 0.0
+    assert M.ordering_correct(_ctx("I use tabs"), ["4 spaces", "tabs"]) == 0.0
+
+
+def test_ordering_compares_entries_not_character_offsets() -> None:
+    """Both anchors inside the leading entry is a pass, not a failure.
+
+    Real case: "Ravi handed on-call over to Mira" names the superseded holder
+    before the current one within the current entry. A character-offset
+    comparison failed a correctly ordered context.
+    """
+    correct = _ctx("Ravi handed on-call over to Mira", "Ravi is the on-call")
+    assert M.ordering_correct(correct, ["Mira", "Ravi"]) == 1.0
+
+    stale_leads = _ctx("Ravi is the on-call", "Ravi handed on-call over to Mira")
+    assert M.ordering_correct(stale_leads, ["Mira", "Ravi"]) == 0.0
 
 
 def test_token_f1_and_exact_match() -> None:

@@ -65,6 +65,13 @@ class OpenVikingInjectionAdapter(UnifiedAdapter):
         Returns ``(context_text, trajectory)``. The trajectory is a list of
         ``{index, source, fact_type, tier, tokens}`` dicts describing exactly
         what made it into the payload and why it stopped.
+
+        Relevance decides **selection**; recency decides **presentation**.
+        Within each tier the newest entry leads and the header states the
+        tie-break rule, so a superseded fact that is still retrievable cannot
+        be read as current. This is the cheapest half of conflict resolution:
+        no extraction, no LLM call, no deletion — order the material and tell
+        the reader how to use the order.
         """
         budget = max_tokens
         trajectory: list[dict[str, Any]] = []
@@ -77,10 +84,18 @@ class OpenVikingInjectionAdapter(UnifiedAdapter):
                 lines.append("")
                 budget -= cost
 
+        if any(self._recency_key(r) for r in recalled):
+            rule = self.CONFLICT_RULE
+            cost = self._tokens(rule)
+            if cost < budget:
+                lines.append(rule)
+                lines.append("")
+                budget -= cost
+
         # Tier 1: dense fact-type items (world/experience/observation) first.
         # Tier 2: everything else (verbatim conversation excerpts) after.
-        tier1 = [r for r in recalled if r.fact_type]
-        tier2 = [r for r in recalled if not r.fact_type]
+        tier1 = self._newest_first([r for r in recalled if r.fact_type])
+        tier2 = self._newest_first([r for r in recalled if not r.fact_type])
 
         for tier_name, bucket in (("L1", tier1), ("L2", tier2)):
             for r in bucket:
@@ -111,6 +126,53 @@ class OpenVikingInjectionAdapter(UnifiedAdapter):
                 )
 
         return "\n".join(lines).strip(), trajectory
+
+    # One line of instruction, in place of trying to infer which of two
+    # conflicting statements is true. Cognee arrives at the same answer twice
+    # independently (user_preferences/constants.py:60 and
+    # session_context_builder.py:70), which is a strong hint that ordering plus
+    # a stated rule beats inference at this price point.
+    CONFLICT_RULE = (
+        "Most recent first. When two entries conflict, follow the one nearer the top."
+    )
+
+    @staticmethod
+    def _recency_key(r: Recalled) -> str:
+        """Sortable recency key, empty for items that have none.
+
+        Prefers the entry's **append position**, which is the true recency
+        order: the ms prefix in an entry id cannot separate entries written
+        inside the same millisecond, and that measurably made presentation
+        order vary between otherwise identical eval runs. Falls back to the
+        entry id, then to nothing — items with no key (typed facts from the
+        brain) keep the relevance order they arrived with.
+        """
+        meta = r.metadata or {}
+        seq = meta.get("seq")
+        if isinstance(seq, int):
+            return f"{seq:012d}"
+        return str(meta.get("entry_id") or "")
+
+    @classmethod
+    def order_for_presentation(cls, items: list[Recalled]) -> list[Recalled]:
+        """Public entry point: tier-agnostic recency ordering.
+
+        The pipeline calls this before the index cards are cut, so the cards and
+        the assembled body agree on which entry is first.
+        """
+        return cls._newest_first(items)
+
+    @classmethod
+    def _newest_first(cls, items: list[Recalled]) -> list[Recalled]:
+        """Order by recency, keeping relevance order among items with no id.
+
+        A stable sort on a constant key is a no-op, so items without an entry id
+        (typed facts from the brain) retain the fused ranking they arrived with
+        rather than being shuffled to one end.
+        """
+        if not any(cls._recency_key(r) for r in items):
+            return items
+        return sorted(items, key=cls._recency_key, reverse=True)
 
     @staticmethod
     def _render(r: Recalled) -> str:

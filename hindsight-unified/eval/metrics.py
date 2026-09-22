@@ -81,27 +81,49 @@ def recall_hit(context: str, must_contain: list[str]) -> float:
     return hits / len(must_contain)
 
 
+def context_blocks(context: str) -> list[str]:
+    """Split an assembled context into its per-entry blocks.
+
+    Every rendered entry — index card or body line — starts with ``- (`` or
+    ``[n] (``, so the block boundary is recoverable from the text alone without
+    the harness needing the structured result.
+    """
+    parts = re.split(r"(?m)^(?:- \(|\[\d+\] \()", context or "")
+    return [p for p in parts if p.strip()]
+
+
 def ordering_correct(context: str, must_precede: list[str]) -> float:
-    """1.0 when the first string appears before the second in the context.
+    """1.0 when the entry holding the current fact leads the one it replaced.
 
     The measure for "the user changed their mind". Superseded facts are tagged,
     not deleted, so the older statement legitimately remains retrievable — what
     must hold is that the *current* one is presented first, since that is the
-    signal the reading model acts on. Absence would be the wrong assertion here.
+    signal the reading model acts on. Absence would be the wrong assertion.
 
-    Scores 0.0 when the current fact is missing entirely: that is a worse
-    failure than bad ordering, not an exemption from it.
+    Compared by **entry position, not character offset**. Found by inspecting a
+    case rather than trusting the score: "Ravi handed on-call over to Mira"
+    mentions the superseded holder before the current one *inside the current
+    entry*, so an offset comparison failed a correctly ordered context. Two
+    anchors landing in the same entry is therefore a pass — the leading entry is
+    the current one, which is all this claims.
+
+    Scores 0.0 when the current fact is missing entirely: a worse failure than
+    bad ordering, not an exemption from it.
     """
     if len(must_precede) != 2:
         return 1.0
-    haystack = normalize(context)
-    first = haystack.find(normalize(must_precede[0]))
-    second = haystack.find(normalize(must_precede[1]))
-    if first < 0:
+    blocks = context_blocks(context)
+    current = next(
+        (i for i, b in enumerate(blocks) if contains_anchor(b, must_precede[0])), -1
+    )
+    stale = next(
+        (i for i, b in enumerate(blocks) if contains_anchor(b, must_precede[1])), -1
+    )
+    if current < 0:
         return 0.0  # the current fact was not recalled at all
-    if second < 0:
+    if stale < 0:
         return 1.0  # only the current fact present — trivially ordered
-    return 1.0 if first < second else 0.0
+    return 1.0 if current <= stale else 0.0
 
 
 def must_not_appear(context: str, forbidden: list[str]) -> float:

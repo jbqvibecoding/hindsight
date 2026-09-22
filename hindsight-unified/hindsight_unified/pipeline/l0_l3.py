@@ -150,13 +150,20 @@ class LayeredPipeline:
                         text=entry.as_text(),
                         source="substrate",
                         score=score,
-                        metadata={"entry_id": entry.entry_id},
+                        metadata={"entry_id": entry.entry_id, "seq": entry.seq},
                     )
                     for entry, score in sub_hits
                 ]
             )
 
         fused = rrf_fuse(ranked_lists, limit=req.limit)
+
+        # Order for presentation once, before the cards are cut, so card [0]
+        # names the same entry the body shows first. Building the index from the
+        # fused order and the body from the recency order would break the
+        # "scan the cards, then open that drawer" contract they exist for.
+        if self._openviking is not None:
+            fused = self._openviking.order_for_presentation(fused)
 
         aaak = ""
         if self._mempalace is not None:

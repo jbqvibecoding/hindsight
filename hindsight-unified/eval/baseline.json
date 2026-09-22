@@ -19,9 +19,9 @@
     },
     "ordering": {
       "metric": "ordering",
-      "mean": 0.8,
-      "ci_lower": 0.7111,
-      "ci_upper": 0.8778,
+      "mean": 0.9333,
+      "ci_lower": 0.8778,
+      "ci_upper": 0.9778,
       "n": 90,
       "run_std": 0.0
     }
@@ -35,7 +35,7 @@
     "contradiction_resolution": {
       "recall_hit": 0.3333,
       "abstention": 1.0,
-      "ordering": 0.0
+      "ordering": 0.3333
     },
     "event_ordering": {
       "recall_hit": 0.3333,
@@ -55,7 +55,7 @@
     "knowledge_update": {
       "recall_hit": 1.0,
       "abstention": 1.0,
-      "ordering": 0.0
+      "ordering": 1.0
     },
     "multi_session_reasoning": {
       "recall_hit": 1.0,

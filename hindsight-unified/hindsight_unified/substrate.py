@@ -179,6 +179,11 @@ class SubstrateEntry:
     digest: str = ""
     superseded_by: str = ""
     last_served_ts: float = 0.0
+    # Position in the bank's append-only index. The true recency order:
+    # the ms timestamp in entry_id cannot separate entries written inside
+    # the same millisecond, which measurably made presentation order vary
+    # between runs. Append position is total and deterministic.
+    seq: int = 0
 
     def as_text(self) -> str:
         parts = []
@@ -455,7 +460,7 @@ class MarkdownSubstrate:
             return []
         out: list[SubstrateEntry] = []
         with open(idx, encoding="utf-8") as fh:
-            for line in fh:
+            for position, line in enumerate(fh):
                 line = line.strip()
                 if not line:
                     continue
@@ -478,6 +483,7 @@ class MarkdownSubstrate:
                         digest=str(r.get("content_hash") or ""),
                         superseded_by=str(meta.get("superseded_by") or ""),
                         last_served_ts=float(meta.get("last_served_ts") or 0.0),
+                        seq=position,
                     )
                 )
         return out
