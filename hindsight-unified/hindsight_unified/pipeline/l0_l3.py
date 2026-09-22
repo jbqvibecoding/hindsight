@@ -22,6 +22,7 @@ the others.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 
 from ..adapters.base import UnifiedAdapter
@@ -29,6 +30,18 @@ from ..adapters.mempalace_index import MempalaceIndexAdapter
 from ..adapters.openviking_injection import OpenVikingInjectionAdapter
 from ..substrate import MarkdownSubstrate
 from ..types import CaptureEvent, Recalled, RecallRequest
+from .stages import (
+    ConsolidationRun,
+    RunOutcome,
+    Stage,
+    StageResult,
+    StageStatus,
+    debounce,
+    execute_stage,
+    read_state,
+    validate_fatal_stage_policy,
+    write_state,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +94,10 @@ class LayeredPipeline:
         self._adapters = adapters
         self._mempalace = mempalace
         self._openviking = openviking
+        self._stages = self._build_stages()
+        # Fails construction, not a later run, if the one-fatal-stage contract
+        # is ever broken by adding a second.
+        validate_fatal_stage_policy(self._stages)
 
     # -- L0 + L1 -------------------------------------------------------------
 
@@ -160,9 +177,120 @@ class LayeredPipeline:
 
     # -- L2 ------------------------------------------------------------------
 
-    def consolidate(self, bank: str, bank_dir: Path) -> None:
+    def _build_stages(self) -> list[Stage]:
+        """One stage per adapter, plus the integrity stage that may fail a run.
+
+        ``reconcile`` is the single fatal stage: it is what keeps the markdown
+        truth and the derived index in agreement, so its failure means entries
+        exist that recall cannot reach. Everything else is enrichment and fails
+        open — the same contract that lets the sidecar run with no optional
+        engine installed at all.
+        """
+        stages: list[Stage] = []
+
+        everos = next((a for a in self._adapters if a.name == "everos"), None)
+        if everos is not None:
+            stages.append(
+                Stage(
+                    name="reconcile",
+                    run=lambda bank, bank_dir: bool(everos.reconcile(bank_dir)),
+                    fatal=True,
+                    # An integrity check must run even when no new entries
+                    # arrived: drift can come from outside the append path.
+                    ignores_watermark=True,
+                )
+            )
+
         for adapter in self._adapters:
+            if adapter.name == "everos":
+                continue  # already represented by the reconcile stage
+            stages.append(
+                Stage(
+                    name=adapter.name,
+                    run=self._adapter_stage(adapter),
+                    gate=self._adapter_gate(adapter),
+                )
+            )
+        return stages
+
+    @staticmethod
+    def _adapter_stage(adapter: UnifiedAdapter):
+        def _run(bank: str, bank_dir: Path) -> bool:
+            adapter.consolidate(bank, bank_dir)
+            return True
+
+        return _run
+
+    @staticmethod
+    def _adapter_gate(adapter: UnifiedAdapter):
+        def _gate(bank: str, bank_dir: Path) -> str:
+            # Checked before any work: an adapter whose engine never loaded has
+            # nothing to consolidate, and saying so is cheaper than finding out.
+            return "" if adapter.available() else "adapter_unavailable"
+
+        return _gate
+
+    def consolidate(
+        self,
+        bank: str,
+        bank_dir: Path,
+        *,
+        min_entries: int = 0,
+        min_seconds: float = 0.0,
+        force: bool = False,
+    ) -> ConsolidationRun:
+        """Run the L2 stages, honouring watermarks and the debounce.
+
+        Returns a per-stage report rather than nothing, so a partial failure is
+        visible and a caller can tell work from a no-op.
+        """
+        state = read_state(bank_dir)
+        entries = self._substrate.count(bank_dir)
+
+        if not force:
+            decision = debounce(
+                state, entries=entries, min_entries=min_entries, min_seconds=min_seconds
+            )
+            if not decision.due:
+                return ConsolidationRun(RunOutcome.NOOP, reason=decision.reason)
+
+        results: list[StageResult] = []
+        fatal_error: Exception | None = None
+        for stage in self._stages:
             try:
-                adapter.consolidate(bank, bank_dir)
-            except Exception as e:  # noqa: BLE001
-                logger.debug("adapter %s consolidate failed: %s", adapter.name, e)
+                result = execute_stage(stage, bank, bank_dir, entries, state)
+            except Exception as e:  # noqa: BLE001 - only a fatal stage reaches here
+                fatal_error = e
+                results.append(
+                    StageResult(
+                        stage.name,
+                        StageStatus.ERRORED,
+                        reason=type(e).__name__,
+                        detail=str(e),
+                    )
+                )
+                break
+            results.append(result)
+            if result.status is StageStatus.COMPLETED:
+                stages_state = state.setdefault("stages", {})
+                stages_state[stage.name] = {"entries_at": entries, "ts": time.time()}
+
+        did_work = any(r.status is StageStatus.COMPLETED for r in results)
+        if fatal_error is not None:
+            outcome, reason = RunOutcome.FAILED, "fatal_stage_errored"
+        elif did_work:
+            outcome, reason = RunOutcome.SUCCEEDED, ""
+        else:
+            # Nothing ran: do not let a watermark advance over work that never
+            # happened, so a later run still picks these entries up.
+            outcome, reason = RunOutcome.NOOP, "nothing_to_do"
+
+        if outcome is not RunOutcome.NOOP:
+            state["entries_at_last_run"] = entries
+            state["last_run_ts"] = time.time()
+        state["last_outcome"] = outcome.value
+        write_state(bank_dir, state)
+
+        if fatal_error is not None:
+            logger.error("consolidation failed on a fatal stage: %s", fatal_error)
+        return ConsolidationRun(outcome, results, reason)

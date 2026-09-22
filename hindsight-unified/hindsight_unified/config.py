@@ -54,6 +54,22 @@ def _host(default: str = DEFAULT_HOST) -> str:
     return raw.strip() if raw and raw.strip() else default
 
 
+def _int(name: str, default: int) -> int:
+    """Non-negative int from the environment; a bad value warns and defaults."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        logger.warning("Invalid %s=%r; using %d", name, raw, default)
+        return default
+    if value < 0:
+        logger.warning("%s=%d is negative; using %d", name, value, default)
+        return default
+    return value
+
+
 def _bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None or not raw.strip():
@@ -75,6 +91,11 @@ class Settings:
     enable_mempalace: bool
     enable_openviking: bool
     enable_memos: bool
+    # L2 debounce: a mid-session consolidation fires when EITHER enough new
+    # entries accumulated OR enough time passed since the last run. Both at 0
+    # means every call consolidates. Session end forces a run regardless.
+    consolidate_min_entries: int = 20
+    consolidate_min_seconds: float = 900.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -87,6 +108,10 @@ class Settings:
             enable_mempalace=_bool("UNIFIED_MEMORY_ENABLE_MEMPALACE", True),
             enable_openviking=_bool("UNIFIED_MEMORY_ENABLE_OPENVIKING", True),
             enable_memos=_bool("UNIFIED_MEMORY_ENABLE_MEMOS", True),
+            consolidate_min_entries=_int("UNIFIED_MEMORY_CONSOLIDATE_MIN_ENTRIES", 20),
+            consolidate_min_seconds=float(
+                _int("UNIFIED_MEMORY_CONSOLIDATE_MIN_SECONDS", 900)
+            ),
         )
 
     def bank_dir(self, bank: str) -> Path:

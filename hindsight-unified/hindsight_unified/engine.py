@@ -29,6 +29,7 @@ from .adapters import (
 from .asyncrunner import AsyncRunner
 from .config import Settings
 from .pipeline import LayeredPipeline
+from .pipeline.stages import RunOutcome
 from .substrate import MarkdownSubstrate, SingletonLockHeld
 from .types import CaptureEvent, RecallMarker, RecallRequest
 
@@ -265,10 +266,42 @@ class UnifiedEngine:
             ]
         }
 
-    def end_session(self, *, bank: str, session_key: str = "") -> dict[str, Any]:
+    def end_session(
+        self, *, bank: str, session_key: str = "", force: bool = True
+    ) -> dict[str, Any]:
+        """Trigger L2 consolidation and report what each stage did.
+
+        Session end passes ``force`` by default: it is the one moment we know no
+        further turns are coming, so the debounce (which exists to stop a chatty
+        session paying for a full run every turn) must not hold work back to a
+        run that may never happen.
+        """
         bank_dir = self._settings.bank_dir(bank)
-        self._pipeline.consolidate(bank, bank_dir)
-        return {"ok": True}
+        run = self._pipeline.consolidate(
+            bank,
+            bank_dir,
+            min_entries=self._settings.consolidate_min_entries,
+            min_seconds=self._settings.consolidate_min_seconds,
+            force=force,
+        )
+        return {"ok": run.outcome is not RunOutcome.FAILED, **run.as_dict()}
+
+    def maybe_consolidate(self, *, bank: str) -> dict[str, Any]:
+        """Debounced mid-session consolidation.
+
+        The counterpart to the forced run at session end: a session that runs
+        for hours used to never consolidate at all, because session end was the
+        only trigger.
+        """
+        bank_dir = self._settings.bank_dir(bank)
+        run = self._pipeline.consolidate(
+            bank,
+            bank_dir,
+            min_entries=self._settings.consolidate_min_entries,
+            min_seconds=self._settings.consolidate_min_seconds,
+            force=False,
+        )
+        return {"ok": run.outcome is not RunOutcome.FAILED, **run.as_dict()}
 
     def reflect(self, *, bank: str, query: str) -> dict[str, Any]:
         if self._hindsight is not None and self._hindsight.available():
