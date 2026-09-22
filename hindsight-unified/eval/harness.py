@@ -62,6 +62,9 @@ class Case:
     must_contain: list[str] = field(default_factory=list)
     must_not_contain: list[str] = field(default_factory=list)
     must_precede: list[str] = field(default_factory=list)
+    # True when memory genuinely holds no answer, so surfacing anything is
+    # wrong. Scored by no_false_recall; every other case skips that metric.
+    expect_nothing: bool = False
 
 
 def load_cases(path: Path, *, only: list[str] | None = None) -> list[Case]:
@@ -87,6 +90,7 @@ def load_cases(path: Path, *, only: list[str] | None = None) -> list[Case]:
                     must_contain=raw.get("must_contain", []),
                     must_not_contain=raw.get("must_not_contain", []),
                     must_precede=raw.get("must_precede", []),
+                    expect_nothing=bool(raw.get("expect_nothing", False)),
                 )
             )
     if only:
@@ -243,11 +247,17 @@ def score_rows(rows: list[dict], cases: list[Case], *, judge: Judge | None = Non
     for row in rows:
         case = by_id[row["case_id"]]
         context = str(row.get("retrieval_context") or "")
-        scored = {
-            "recall_hit": M.recall_hit(context, case.must_contain),
+        scored: dict[str, float | None] = {
             "abstention": M.must_not_appear(context, case.must_not_contain),
             "ordering": M.ordering_correct(context, case.must_precede),
         }
+        # A no-answer case has nothing to recall, so recall_hit would score a
+        # meaningless 1.0 for it; and every other case has an answer, so
+        # no_false_recall does not apply. Each metric covers its own half.
+        if case.expect_nothing:
+            scored["no_false_recall"] = M.no_false_recall(context, expect_nothing=True)
+        else:
+            scored["recall_hit"] = M.recall_hit(context, case.must_contain)
         if judge is not None and judge.available():
             score, explanation = judge.score(
                 question=case.question, answer=context, golden_answer=case.answer

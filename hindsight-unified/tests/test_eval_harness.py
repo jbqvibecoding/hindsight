@@ -231,17 +231,19 @@ def test_failures_are_not_cached_but_successes_are(tmp_path: Path) -> None:
 
 def test_shipped_case_set_is_wellformed() -> None:
     cases = load_cases(Path(__file__).resolve().parents[1] / "eval" / "cases.jsonl")
-    assert len(cases) == 33
-    assert len({c.case_id for c in cases}) == 33
-    # Ten BEAM-style skill categories plus anaphoric follow-ups, three each.
+    assert len(cases) == 42
+    assert len({c.case_id for c in cases}) == 42
+    # Ten BEAM-style skill categories plus four of our own, three cases each.
     categories = {}
     for case in cases:
         categories[case.category] = categories.get(case.category, 0) + 1
-    assert len(categories) == 11
+    assert len(categories) == 14
     assert set(categories.values()) == {3}
     for case in cases:
         assert case.question and case.answer
-        assert case.must_contain or case.must_not_contain or case.must_precede
+        # A no-answer case asserts silence, so it carries no anchors by design.
+        if not case.expect_nothing:
+            assert case.must_contain or case.must_not_contain or case.must_precede
 
 
 def test_pinning_selects_a_subset() -> None:
@@ -255,3 +257,22 @@ def test_baseline_on_disk_is_loadable_and_has_the_retrieval_metrics() -> None:
     )
     assert baseline["runs"] >= 3, "a baseline from a single run is not a measurement"
     assert {"recall_hit", "ordering", "abstention"} <= set(baseline["metrics"])
+
+def test_anchors_tolerate_inflections() -> None:
+    """The system retrieved these and ranked them first; only the scorer disagreed."""
+    assert M.recall_hit("First we drained the queue", ["drain"]) == 1.0
+    assert M.recall_hit("Run migrations before starting the API", ["migration"]) == 1.0
+    assert M.recall_hit("we are caching the model", ["cache"]) == 1.0
+    # Still conservative: a short stem must not open the floodgates.
+    assert M.recall_hit("when did that happen", ["Wen"]) == 0.0
+    assert M.recall_hit("the limit is 1000", ["100"]) == 0.0
+    assert M.recall_hit("I prefer tab characters", ["tabs"]) == 0.0
+
+
+def test_no_false_recall_only_scores_no_answer_cases() -> None:
+    # A case that has an answer is excluded, not scored.
+    assert M.no_false_recall("- (substrate) anything", expect_nothing=False) is None
+    # Silence is the right answer when memory holds nothing...
+    assert M.no_false_recall("", expect_nothing=True) == 1.0
+    # ...and handing back top-k regardless of score is a confident wrong answer.
+    assert M.no_false_recall("- (substrate) an unrelated entry", expect_nothing=True) == 0.0

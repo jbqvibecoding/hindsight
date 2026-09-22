@@ -52,19 +52,75 @@ def token_f1(answer: str, golden: str) -> float:
     return 2 * precision * recall / (precision + recall)
 
 
-def contains_anchor(haystack: str, anchor: str) -> bool:
-    """Case-insensitive match on ``anchor`` at word boundaries.
+# Inflections an anchor may appear under. Deliberately short and **explicitly
+# enumerated** rather than a regex suffix wildcard: over-stemming manufactures
+# hits, which is the failure the word-boundary fix already had to undo once.
+_STRIPPABLE = ("ing", "es", "ed", "s")
+_MIN_STEM = 4
 
-    Plain substring matching is wrong for short factual anchors: "Wen" matches
-    inside "when", "100" inside "1000", so a scorer built on it reports hits
-    the system never made. The boundaries are ``\\w``-lookarounds rather than
-    ``\\b`` so anchors carrying punctuation ("eu-central-1", "release.sh") still
-    match as written.
+
+def _stem(token: str) -> str:
+    """Strip one common suffix, but only when a real word is left behind.
+
+    The ``_MIN_STEM`` guard is what keeps this honest: without it "tabs" stems
+    to "tab" and "is" to "i", and short stems match far too much.
     """
-    needle = normalize(anchor)
-    if not needle:
+    for suffix in _STRIPPABLE:
+        if token.endswith(suffix) and len(token) - len(suffix) >= _MIN_STEM:
+            return token[: -len(suffix)]
+    return token
+
+
+def _inflections(stem: str) -> list[str]:
+    """Forms a stem may legitimately appear as, enumerated not guessed.
+
+    Includes the silent-e drop, because appending a suffix to the full stem
+    gives "cacheing" rather than "caching" — the kind of gap that quietly costs
+    a true hit. Enumeration keeps the set auditable; a wildcard would not.
+    """
+    forms = {stem, stem + "s", stem + "es", stem + "ed", stem + "d", stem + "ing"}
+    if stem.endswith("e") and len(stem) - 1 >= _MIN_STEM - 1:
+        root = stem[:-1]
+        forms.update({root + "ing", root + "ed"})
+    # Longest first so the alternation prefers the most specific form.
+    return sorted(forms, key=len, reverse=True)
+
+
+def _anchor_pattern(anchor: str) -> str:
+    """Regex for one anchor: word-bounded, inflection-tolerant, punctuation-safe.
+
+    Each alphabetic token of the anchor is stemmed and allowed to reappear under
+    a common inflection, so ``drain`` matches "drained" and ``migration``
+    matches "migrations" — both cases where the system retrieved the right entry
+    and ranked it first, and only the scorer disagreed. Numeric and mixed tokens
+    are matched literally, so "100" still does not match "1000". Tokens are
+    joined on non-word runs, which is how a punctuated anchor like
+    ``eu-central-1`` or ``release.sh`` keeps matching as written.
+    """
+    tokens = re.findall(r"\w+", normalize(anchor))
+    if not tokens:
+        return ""
+    parts = []
+    for token in tokens:
+        if token.isalpha() and len(token) >= _MIN_STEM:
+            variants = "|".join(re.escape(f) for f in _inflections(_stem(token)))
+            parts.append(f"(?:{variants})")
+        else:
+            parts.append(re.escape(token))
+    return r"(?<!\w)" + r"\W+".join(parts) + r"(?!\w)"
+
+
+def contains_anchor(haystack: str, anchor: str) -> bool:
+    """Case-insensitive, word-bounded, inflection-tolerant match.
+
+    Plain substring matching is wrong for short factual anchors ("Wen" matches
+    inside "when", "100" inside "1000"), and a purely literal word-bounded
+    match is wrong for inflections ("drain" vs "drained"). Both mistakes were
+    made here in turn; this is the form that survived both.
+    """
+    pattern = _anchor_pattern(anchor)
+    if not pattern:
         return False
-    pattern = rf"(?<!\w){re.escape(needle)}(?!\w)"
     return re.search(pattern, normalize(haystack)) is not None
 
 
@@ -79,6 +135,24 @@ def recall_hit(context: str, must_contain: list[str]) -> float:
         return 1.0
     hits = sum(1 for needle in must_contain if contains_anchor(context, needle))
     return hits / len(must_contain)
+
+
+def no_false_recall(context: str, *, expect_nothing: bool) -> float | None:
+    """1.0 when a question memory cannot answer surfaces nothing.
+
+    Returns ``None`` for a case that *does* have an answer, so it is excluded
+    rather than scored — the metric only means something where the right
+    behaviour is silence.
+
+    This is the gap ``abstention`` cannot see. Abstention checks that a specific
+    wrong string is absent; this checks that the system does not hand back its
+    top-k regardless of score, which a threshold-free lexical retriever does by
+    construction. Presenting unrelated entries under a "here is what I
+    remember" header is a confident wrong answer, not a neutral one.
+    """
+    if not expect_nothing:
+        return None
+    return 1.0 if not context_blocks(context) else 0.0
 
 
 def context_blocks(context: str) -> list[str]:
