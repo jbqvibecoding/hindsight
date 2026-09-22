@@ -21,13 +21,17 @@ number can be traced back to what produced it.
 
 ## The case set
 
-30 hand-written cases in our own domain (`cases.jsonl`), three in each of the
+33 hand-written cases in our own domain (`cases.jsonl`), three in each of the
 ten skill categories BEAM uses — the closest published taxonomy to what an
 agent memory actually does:
 
 `information_extraction`, `temporal_reasoning`, `multi_session_reasoning`,
 `contradiction_resolution`, `event_ordering`, `knowledge_update`,
 `summarization`, `abstention`, `preference_following`, `instruction_following`.
+
+Plus `followup_reference`, three anaphoric follow-ups ("and the other one?")
+added because every other case asks its question cold, which made the
+conversational-rewrite lane invisible to the instrument.
 
 Hand-written beats a public benchmark here. HotPotQA measures multi-hop
 Wikipedia QA, not whether an agent remembers that you moved off Slack.
@@ -68,28 +72,43 @@ the path, which is exactly when the number starts earning its keep.
 The gate compares against the baseline's `ci_lower`, not its mean, so a drop
 has to clear the baseline's own spread before it counts as a regression.
 
-## Baseline as of the workstream-B commits
+## Baseline
 
-`baseline.json`, 30 cases × 3 runs, substrate-only (no semantic brain, no judge):
+`baseline.json`, 33 cases x 3 runs, substrate-only (no semantic brain, no judge):
 
 ```
-abstention       mean=0.9667 [0.9222, 1.0000]  run_std=0.0000
-ordering         mean=0.8000 [0.7111, 0.8778]  run_std=0.0000
-recall_hit       mean=0.7667 [0.6778, 0.8556]  run_std=0.0000
+abstention       mean=0.9697 [0.9293, 1.0000]  run_std=0.0000
+ordering         mean=1.0000 [1.0000, 1.0000]  run_std=0.0000
+recall_hit       mean=0.9394 [0.8889, 0.9798]  run_std=0.0000
 ```
 
-The category breakdown is the useful part, and it already names the known
-defects rather than averaging them away:
+Per category, which is where the actionable signal lives:
 
-| Category | `recall_hit` | `ordering` | What it says |
-|---|---|---|---|
-| `contradiction_resolution` | 0.33 | **0.00** | The changed-mind defect. Asked "how do I indent?", keyword overlap matches the stale turn (which contains "indent") and misses the correction entirely. |
-| `knowledge_update` | 1.00 | **0.00** | Both facts retrieved, stale one leading. |
-| `summarization` | 0.33 | 1.00 | Conclusions spread across turns are not joined. |
-| `event_ordering` | 0.33 | 1.00 | Causal chains phrased once are missed by term overlap. |
-| `instruction_following` | 0.67 | 1.00 | |
-| `abstention` | 1.00 | 1.00 | 0.67 on the abstention metric — one case leaks. |
+| Category | `recall_hit` | `ordering` |
+|---|---|---|
+| `event_ordering` | **0.33** | 1.00 |
+| `abstention` | 1.00 | 1.00 (0.67 on the abstention metric) |
+| everything else | 1.00 | 1.00 |
 
-`ordering = 0.00` on both changed-mind categories is workstream A4/D1's target;
-the `recall_hit` gaps are what A1 (conversational rewrite) and A2 (BM25) are
-for. Re-run with `--gate` after each and compare, rather than assuming.
+### What the instrument has actually decided so far
+
+It has been wrong-footed twice and has overruled two plausible changes, which
+is the only reason to trust the numbers it now reports.
+
+| Change | Verdict |
+|---|---|
+| Okapi BM25 replacing term overlap | **0.0000 on every metric, twice.** Inspecting the retrieved context showed why: every failing case failed on *zero term overlap*, not bad ranking, and no lexical scorer can rank an entry it never matched. Kept because it is strictly better and free, not because it was measured to help. |
+| Distractor corpus | Not a system change — an instrument fix. Cases seeded one to three entries against a limit of eight, so everything was returned and relevance never bound. |
+| Recency ordering + conflict rule | `ordering` 0.8000 -> 0.9333; `knowledge_update` 0.00 -> 1.00. Also surfaced real nondeterminism (`run_std` 0.0000 -> 0.0192) from same-millisecond entry ids, fixed by keying recency on append position. |
+| Two-lane conversational rewrite | `recall_hit` 0.7667 -> 0.9394, `ordering` -> 1.0000, both non-overlapping. Needed three new follow-up cases first: every existing case was a cold question, so the instrument could not see it — the same gap that hid BM25. |
+
+Two metric bugs were also caught by inspecting cases rather than trusting
+scores: substring anchors reported hits the system never made ("Wen" inside
+"when"), and comparing character offsets failed a correctly ordered context
+where the current entry mentions the superseded holder first ("Ravi handed
+on-call over to Mira").
+
+`run_std` is `0.0000` because the substrate path is fully deterministic, so any
+delta there is signal. That stops being true the moment an LLM or a semantic
+index enters the path — which is exactly when the number starts earning its
+keep.
