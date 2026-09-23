@@ -1,40 +1,40 @@
-{"user": "The grafana dashboard for queue depth is on the ops board.", "assistant": "Noted."}
-{"user": "We renamed the ingest topic to events.raw last quarter.", "assistant": "Noted."}
-{"user": "Backups run at 03:00 UTC into the cold bucket.", "assistant": "Noted."}
-{"user": "The linter config lives in pyproject under tool.ruff.", "assistant": "Noted."}
-{"user": "I usually review PRs in the morning before standup.", "assistant": "Noted."}
-{"user": "The staging cluster has three nodes, production has nine.", "assistant": "Noted."}
+{"user": "The grafana dashboard for queue depth is on the ops board.", "assistant": "Understood."}
+{"user": "We renamed the ingest topic to events.raw last quarter.", "assistant": "Ack."}
+{"user": "Backups run at 03:00 UTC into the cold bucket.", "assistant": "Got it."}
+{"user": "The linter config lives in pyproject under tool.ruff.", "assistant": "Sure thing."}
+{"user": "I usually review PRs in the morning before standup.", "assistant": "Right."}
+{"user": "The staging cluster has three nodes, production has nine.", "assistant": "Okay."}
 {"user": "Our error budget for the quarter is 99.5 percent.", "assistant": "Noted."}
-{"user": "The feature flag service is called switchboard.", "assistant": "Noted."}
-{"user": "We use conventional commits across all repositories.", "assistant": "Noted."}
-{"user": "The oncall rotation is weekly, starting Mondays.", "assistant": "Noted."}
-{"user": "Log retention is thirty days in the hot tier.", "assistant": "Noted."}
-{"user": "The design doc template lives in docs/templates.", "assistant": "Noted."}
-{"user": "We deprecated the v1 endpoints but have not removed them.", "assistant": "Noted."}
-{"user": "The load test harness is written in Go.", "assistant": "Noted."}
+{"user": "The feature flag service is called switchboard.", "assistant": "Fine."}
+{"user": "We use conventional commits across all repositories.", "assistant": "Understood."}
+{"user": "The oncall rotation is weekly, starting Mondays.", "assistant": "Ack."}
+{"user": "Log retention is thirty days in the hot tier.", "assistant": "Got it."}
+{"user": "The design doc template lives in docs/templates.", "assistant": "Sure thing."}
+{"user": "We deprecated the v1 endpoints but have not removed them.", "assistant": "Right."}
+{"user": "The load test harness is written in Go.", "assistant": "Okay."}
 {"user": "My editor is configured with format-on-save.", "assistant": "Noted."}
-{"user": "The metrics pipeline batches every sixty seconds.", "assistant": "Noted."}
-{"user": "We moved issue tracking from Jira to Linear.", "assistant": "Noted."}
-{"user": "The cache eviction policy is least-recently-used.", "assistant": "Noted."}
-{"user": "There is a nightly job that prunes orphaned blobs.", "assistant": "Noted."}
-{"user": "The auth service issues tokens valid for one hour.", "assistant": "Noted."}
-{"user": "We keep architecture decisions in numbered ADR files.", "assistant": "Noted."}
-{"user": "The schema registry rejects backwards-incompatible changes.", "assistant": "Noted."}
+{"user": "The metrics pipeline batches every sixty seconds.", "assistant": "Fine."}
+{"user": "We moved issue tracking from Jira to Linear.", "assistant": "Understood."}
+{"user": "The cache eviction policy is least-recently-used.", "assistant": "Ack."}
+{"user": "There is a nightly job that prunes orphaned blobs.", "assistant": "Got it."}
+{"user": "The auth service issues tokens valid for one hour.", "assistant": "Sure thing."}
+{"user": "We keep architecture decisions in numbered ADR files.", "assistant": "Right."}
+{"user": "The schema registry rejects backwards-incompatible changes.", "assistant": "Okay."}
 {"user": "Our docker base image is distroless.", "assistant": "Noted."}
-{"user": "The search index is rebuilt weekly on Sundays.", "assistant": "Noted."}
-{"user": "I take notes in plain markdown files, one per day.", "assistant": "Noted."}
-{"user": "The billing reconciliation runs on the first of the month.", "assistant": "Noted."}
-{"user": "We shard the write path by tenant id.", "assistant": "Noted."}
-{"user": "The retry policy is three attempts with jitter.", "assistant": "Noted."}
-{"user": "Secrets are mounted from the vault sidecar, never baked in.", "assistant": "Noted."}
-{"user": "The changelog is generated from commit subjects.", "assistant": "Noted."}
+{"user": "The search index is rebuilt weekly on Sundays.", "assistant": "Fine."}
+{"user": "I take notes in plain markdown files, one per day.", "assistant": "Understood."}
+{"user": "The billing reconciliation runs on the first of the month.", "assistant": "Ack."}
+{"user": "We shard the write path by tenant id.", "assistant": "Got it."}
+{"user": "The retry policy is three attempts with jitter.", "assistant": "Sure thing."}
+{"user": "Secrets are mounted from the vault sidecar, never baked in.", "assistant": "Right."}
+{"user": "The changelog is generated from commit subjects.", "assistant": "Okay."}
 {"user": "We run static analysis in a separate CI job.", "assistant": "Noted."}
-{"user": "The queue consumer prefetch is set to ten.", "assistant": "Noted."}
-{"user": "Our SLO dashboards refresh every five minutes.", "assistant": "Noted."}
-{"user": "The archive format we standardised on is zstd.", "assistant": "Noted."}
-{"user": "I prefer small pull requests over large ones.", "assistant": "Noted."}
-{"user": "The integration suite needs docker compose running.", "assistant": "Noted."}
-{"user": "We label flaky tests and quarantine them.", "assistant": "Noted."}
-{"user": "The API gateway terminates TLS at the edge.", "assistant": "Noted."}
+{"user": "The queue consumer prefetch is set to ten.", "assistant": "Fine."}
+{"user": "Our SLO dashboards refresh every five minutes.", "assistant": "Understood."}
+{"user": "The archive format we standardised on is zstd.", "assistant": "Ack."}
+{"user": "I prefer small pull requests over large ones.", "assistant": "Got it."}
+{"user": "The integration suite needs docker compose running.", "assistant": "Sure thing."}
+{"user": "We label flaky tests and quarantine them.", "assistant": "Right."}
+{"user": "The API gateway terminates TLS at the edge.", "assistant": "Okay."}
 {"user": "Config changes require a second approver.", "assistant": "Noted."}
-{"user": "The data warehouse loads land in the staging schema first.", "assistant": "Noted."}
+{"user": "The data warehouse loads land in the staging schema first.", "assistant": "Fine."}
