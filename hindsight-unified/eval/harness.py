@@ -31,6 +31,7 @@ import argparse
 import json
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,16 @@ def load_cases(path: Path, *, only: list[str] | None = None) -> list[Case]:
                     expect_nothing=bool(raw.get("expect_nothing", False)),
                 )
             )
+    # A duplicate id is a silent double-count, and worse under --only, where
+    # both cases are selected and the category breakdown reports whichever was
+    # read last. That is not hypothetical: a new category was added with an id
+    # prefix already in use, and the run reported n=6 for three cases under
+    # another category's name. Fail loudly instead.
+    counts = Counter(case.case_id for case in cases)
+    duplicates = sorted(case_id for case_id, n in counts.items() if n > 1)
+    if duplicates:
+        raise ValueError(f"duplicate case_id in {path}: {', '.join(duplicates)}")
+
     if only:
         wanted = set(only)
         cases = [c for c in cases if c.case_id in wanted]

@@ -59,3 +59,20 @@ def test_torn_index_line_is_skipped(tmp_path: Path) -> None:
         fh.write('{"id": "torn-entr')  # simulated torn write
     assert sub.count(bank) == 1
     assert sub.search(bank, "good entry")
+
+
+def test_serialization_labels_are_not_searchable(tmp_path: Path) -> None:
+    """Our own field labels must not be terms.
+
+    ``as_text()`` renders "User: ...\\nAssistant: ...", and indexing that
+    verbatim made every entry in a bank match any query containing the words
+    "user" or "assistant" — which the conversational rewrite lane emits on
+    every single call ("Prior user:", "Prior assistant:"). The lane could
+    therefore never come back empty, and a question memory cannot answer still
+    returned a full slate.
+    """
+    sub, bank = _make(tmp_path)
+    sub.append(bank, session_key="s1", user="the reaper trims blobs", assistant="ok")
+    assert sub.search(bank, "user assistant") == []
+    # The turn's own words still match, so this removes noise, not signal.
+    assert sub.search(bank, "reaper")

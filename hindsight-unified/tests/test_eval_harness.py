@@ -232,13 +232,13 @@ def test_failures_are_not_cached_but_successes_are(tmp_path: Path) -> None:
 
 def test_shipped_case_set_is_wellformed() -> None:
     cases = load_cases(Path(__file__).resolve().parents[1] / "eval" / "cases.jsonl")
-    assert len(cases) == 42
-    assert len({c.case_id for c in cases}) == 42
-    # Ten BEAM-style skill categories plus four of our own, three cases each.
+    assert len(cases) == 45
+    assert len({c.case_id for c in cases}) == 45
+    # Ten BEAM-style skill categories plus five of our own, three cases each.
     categories = {}
     for case in cases:
         categories[case.category] = categories.get(case.category, 0) + 1
-    assert len(categories) == 14
+    assert len(categories) == 15
     assert set(categories.values()) == {3}
     for case in cases:
         assert case.question and case.answer
@@ -250,6 +250,20 @@ def test_shipped_case_set_is_wellformed() -> None:
 def test_pinning_selects_a_subset() -> None:
     path = Path(__file__).resolve().parents[1] / "eval" / "cases.jsonl"
     assert [c.case_id for c in load_cases(path, only=["cr-01", "ku-02"])] == ["cr-01", "ku-02"]
+
+
+def test_a_duplicate_case_id_is_rejected(tmp_path: Path) -> None:
+    """A duplicate id double-counts silently, which is worse than a crash.
+
+    Found the hard way: a new category reused an id prefix already in use, and
+    ``--only`` then selected both cases, reporting n=6 for three cases under
+    the other category's name.
+    """
+    path = tmp_path / "cases.jsonl"
+    row = {"case_id": "dup-01", "category": "x", "question": "q?", "answer": "a"}
+    path.write_text(json.dumps(row) + "\n" + json.dumps(row) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="dup-01"):
+        load_cases(path)
 
 
 def test_baseline_on_disk_is_loadable_and_has_the_retrieval_metrics() -> None:

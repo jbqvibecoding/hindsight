@@ -119,6 +119,25 @@ def _tokenize(text: str) -> list[str]:
     return [t.lower() for t in _TOKEN_RE.findall(text or "")]
 
 
+def _entry_document(entry: SubstrateEntry) -> str:
+    """The text an entry is *indexed* by, which is not the text it is shown as.
+
+    ``as_text()`` renders ``"User: ...\\nAssistant: ..."`` for display, and
+    indexing that verbatim put our own serialization labels into the term
+    space. That was not cosmetic: the conversational rewrite lane builds a
+    query containing the literal words ``Prior user:`` and ``Prior assistant:``,
+    so *every entry in the bank* matched it on ``user`` and ``assistant``. The
+    rewrite lane could therefore never return an empty result, and a question
+    memory genuinely cannot answer still came back with a full slate of
+    entries — which is the mechanism behind the relevance floor we measured as
+    unreachable.
+
+    A field label is part of how we serialize a turn, never part of what the
+    user said, so it has no business being searchable.
+    """
+    return "\n".join(part for part in (entry.user, entry.assistant) if part)
+
+
 # Okapi BM25 parameters. k1 controls how fast term frequency saturates, b how
 # strongly document length is normalised; these are the standard defaults and
 # there is no corpus here large enough to justify tuning them.
@@ -579,7 +598,7 @@ class MarkdownSubstrate:
         entries = [
             e for e in self._load(bank_dir) if not session_key or e.session_key == session_key
         ]
-        docs = [(e, _tokenize(e.as_text())) for e in entries]
+        docs = [(e, _tokenize(_entry_document(e))) for e in entries]
         docs = [(e, tokens) for e, tokens in docs if tokens]
         if not docs:
             return []
