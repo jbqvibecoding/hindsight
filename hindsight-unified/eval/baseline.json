@@ -6,7 +6,7 @@
       "mean": 1.0,
       "ci_lower": 1.0,
       "ci_upper": 1.0,
-      "n": 126,
+      "n": 135,
       "run_std": 0.0
     },
     "ordering": {
@@ -14,15 +14,15 @@
       "mean": 1.0,
       "ci_lower": 1.0,
       "ci_upper": 1.0,
-      "n": 126,
+      "n": 135,
       "run_std": 0.0
     },
     "recall_hit": {
       "metric": "recall_hit",
-      "mean": 0.9231,
-      "ci_lower": 0.8718,
-      "ci_upper": 0.9658,
-      "n": 117,
+      "mean": 0.881,
+      "ci_lower": 0.8254,
+      "ci_upper": 0.9365,
+      "n": 126,
       "run_std": 0.0
     }
   },
@@ -43,6 +43,11 @@
       "recall_hit": 1.0
     },
     "followup_reference": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "inflection_gap": {
       "abstention": 1.0,
       "ordering": 1.0,
       "recall_hit": 1.0
@@ -74,7 +79,7 @@
     "predecessor_query": {
       "abstention": 1.0,
       "ordering": 1.0,
-      "recall_hit": 0.6667
+      "recall_hit": 0.3333
     },
     "preference_following": {
       "abstention": 1.0,
@@ -94,7 +99,7 @@
     "vocabulary_gap": {
       "abstention": 1.0,
       "ordering": 1.0,
-      "recall_hit": 0.3333
+      "recall_hit": 0.0
     }
   }
 }

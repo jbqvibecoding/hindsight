@@ -115,8 +115,66 @@ _STOPWORDS = frozenset(
 )
 
 
+_DOUBLED = frozenset("bdfglmnprt")
+
+
+def _stem(token: str) -> str:
+    """Conservative suffix stripping, so "migrations" can match "migration".
+
+    Exact-token BM25 cannot match a word against its own inflection, which is
+    not a corner case in practice: a question almost never reuses the tense and
+    number of the turn that answers it. T-Mem stems with Porter before
+    indexing; we cannot take the dependency, so this is the safe subset of the
+    same idea — plurals and the two regular verb endings, and nothing that
+    changes a word's part of speech.
+
+    It is deliberately *not* the inflection logic in ``eval/metrics.py``, and
+    the two must not be merged. That one expands an anchor into the forms a
+    context might contain; this one reduces a token to a stem. Sharing an
+    implementation would let the instrument inherit the system's idea of what
+    matches, which is the one way a metric can quietly start measuring itself.
+    """
+    if len(token) < 4 or not token.isalpha():
+        return token
+
+    # Plurals first: a plural verb ("migrations") must reach the same stem as
+    # the singular noun, so this runs before the verb endings.
+    if token.endswith("ies") and len(token) > 4:
+        token = token[:-3] + "y"
+    elif token.endswith("sses"):
+        token = token[:-2]
+    elif token.endswith("s") and not token.endswith(("ss", "us", "is")):
+        token = token[:-1]
+
+    if token.endswith("ing") and len(token) >= 6:
+        token = token[:-3]
+    elif token.endswith("ed") and len(token) >= 5:
+        token = token[:-2]
+
+    # "stopped"/"stopping" both land on "stopp"; undo the doubling so they meet
+    # "stop". Restricted to the consonants English actually doubles.
+    if len(token) >= 4 and token[-1] == token[-2] and token[-1] in _DOUBLED:
+        token = token[:-1]
+
+    # Silent e: "cached"/"caching" reduce to "cach" while "cache" would not,
+    # and the same splits queue/queued, merge/merged, store/stored. Dropping a
+    # trailing "e" from anything long enough rejoins them. This is the one rule
+    # here that can merge two distinct words ("more" and "mor-"), which is why
+    # it is gated on length.
+    if len(token) >= 4 and token.endswith("e"):
+        token = token[:-1]
+
+    return token
+
+
 def _tokenize(text: str) -> list[str]:
-    return [t.lower() for t in _TOKEN_RE.findall(text or "")]
+    return [_stem(t.lower()) for t in _TOKEN_RE.findall(text or "")]
+
+
+# Stopwords are written unstemmed for readability, but the query filter runs
+# over stemmed tokens — without this, "does" stems to "doe", misses the list
+# and becomes a search term.
+_STOPWORD_STEMS = frozenset(_stem(word) for word in _STOPWORDS) | _STOPWORDS
 
 
 def _entry_document(entry: SubstrateEntry) -> str:
@@ -589,7 +647,7 @@ class MarkdownSubstrate:
         not semantic nuance; that is what the Hindsight brain adds on top.
         """
         q_tokens = _tokenize(query)
-        q_set = {t for t in q_tokens if t not in _STOPWORDS}
+        q_set = {t for t in q_tokens if t not in _STOPWORD_STEMS}
         if not q_set:  # all-stopword query: fall back to raw tokens
             q_set = set(q_tokens)
         if not q_set:

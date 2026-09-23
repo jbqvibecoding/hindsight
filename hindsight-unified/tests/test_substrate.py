@@ -76,3 +76,22 @@ def test_serialization_labels_are_not_searchable(tmp_path: Path) -> None:
     assert sub.search(bank, "user assistant") == []
     # The turn's own words still match, so this removes noise, not signal.
     assert sub.search(bank, "reaper")
+
+
+def test_an_inflected_query_term_matches_its_stem(tmp_path: Path) -> None:
+    """Exact-token BM25 cannot match a word against its own inflection, and a
+    question almost never reuses the tense and number of the turn answering
+    it."""
+    sub, bank = _make(tmp_path)
+    sub.append(bank, session_key="s", user="Our migration runner picks files", assistant="ok")
+    assert sub.search(bank, "how are migrations ordered")
+    sub.append(bank, session_key="s", user="Snapshots are pruned nightly", assistant="ok")
+    assert sub.search(bank, "when is a snapshot pruning done")
+
+
+def test_stemming_keeps_distinct_words_apart(tmp_path: Path) -> None:
+    """Over-stemming manufactures matches, which is the failure mode that the
+    anchor matcher in the eval already had to undo once."""
+    sub, bank = _make(tmp_path)
+    sub.append(bank, session_key="s", user="the land registry export", assistant="ok")
+    assert sub.search(bank, "lane") == []
