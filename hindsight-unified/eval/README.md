@@ -21,15 +21,15 @@ number can be traced back to what produced it.
 
 ## The case set
 
-42 hand-written cases in our own domain (`cases.jsonl`), three in each of
-fourteen categories. Ten are the skill categories BEAM uses — the closest
+45 hand-written cases in our own domain (`cases.jsonl`), three in each of
+fifteen categories. Ten are the skill categories BEAM uses — the closest
 published taxonomy to what an agent memory actually does:
 
 `information_extraction`, `temporal_reasoning`, `multi_session_reasoning`,
 `contradiction_resolution`, `event_ordering`, `knowledge_update`,
 `summarization`, `abstention`, `preference_following`, `instruction_following`.
 
-The other four were added here, and **every one of them was added because the
+The other five were added here, and **every one of them was added because the
 system failed it at the time of writing.** That is the rule: a category that
 passes on arrival measures nothing.
 
@@ -39,6 +39,7 @@ passes on arrival measures nothing.
 | `vocabulary_gap` | A question and the entry answering it can share **no term at all** ("what cleans up storage we no longer need?" vs "the nightly job that trims old blobs is called reaper"). No expansion derivable from the entry text can invent the synonym, so this is the case no deterministic lane can pass. |
 | `predecessor_query` | "Which region did we use *before* the move?" The question's terms match the *current* entry; the superseded one shares nothing with the question, so it is never retrieved. |
 | `no_answer` | A question the bank genuinely cannot answer, over a distractor-only corpus. Top-k returns its k regardless of score, so this asks whether the system can decline. |
+| `inflection_gap` | The question and its answer share **no exact token**, only inflections — "how are migrations ordered" against "our migration runner picks files in lexical order". Exact-token BM25 cannot match a word against its own inflection. |
 
 Hand-written beats a public benchmark here. HotPotQA measures multi-hop
 Wikipedia QA, not whether an agent remembers that you moved off Slack.
@@ -80,7 +81,17 @@ measured, and all three failed:
 So the metric ships computed-but-unscored, with the numbers recorded. A metric
 pinned at 0.00 is worse than an absent one: it looks like a standing defect and
 invites someone to "fix" the system to satisfy an instrument that cannot
-measure it. The relevance floor needs a semantic signal, not a lexical one.
+measure it.
+
+**That measurement is now known to have been taken on a compromised
+instrument, and is worth repeating.** Both discriminator 1 and the scores in
+discriminator 3 were produced while two defects were manufacturing matches:
+entries were indexed with their own `User:`/`Assistant:` labels, which the
+rewrite lane emits on every call, and every seeded turn replied `"Noted."`, so
+one token spanned the corpus. Either alone guarantees that any entry scores
+above zero against any query — which is precisely why "the signal never
+appears". Both are fixed. Whether a floor is reachable now has not been
+re-tested; the verdict above stands only until it is.
 
 Exact match and token F1 are deliberately **absent**: comparing a multi-line
 verbatim context against a short golden answer makes EM structurally zero and
@@ -108,24 +119,24 @@ has to clear the baseline's own spread before it counts as a regression.
 
 ## Baseline
 
-`baseline.json`, 42 cases x 3 runs, substrate-only (no semantic brain, no LLM
+`baseline.json`, 45 cases x 3 runs, substrate-only (no semantic brain, no LLM
 lane, no judge):
 
 ```
-abstention       mean=1.0000 [1.0000, 1.0000]  n=126  run_std=0.0000
-ordering         mean=1.0000 [1.0000, 1.0000]  n=126  run_std=0.0000
-recall_hit       mean=0.9231 [0.8718, 0.9658]  n=117  run_std=0.0000
+abstention       mean=1.0000 [1.0000, 1.0000]  n=135  run_std=0.0000
+ordering         mean=1.0000 [1.0000, 1.0000]  n=135  run_std=0.0000
+recall_hit       mean=0.8810 [0.8254, 0.9365]  n=126  run_std=0.0000
 ```
 
 Per category, which is where the actionable signal lives:
 
 | Category | `recall_hit` | Why |
 |---|---|---|
-| `vocabulary_gap` | **0.33** | Zero term overlap between question and answer. Unreachable by any lexical lane — this is what the LLM summary lane exists for. |
-| `predecessor_query` | **0.67** | The failing case's subject ("region") appears in *neither* entry, so no deterministic link can be derived. |
-| everything else (12) | 1.00 | — |
+| `vocabulary_gap` | **0.00** | Zero term overlap between question and answer. Unreachable by any lexical lane — this is what the write-time trigger lane exists for. |
+| `predecessor_query` | **0.00** | A direct probe shows none of its three answers is retrievable by the raw lane at all, which is exactly what the category asserts. |
+| everything else (13) | 1.00 | — |
 
-`recall_hit` counts 117, not 126, because the `no_answer` cases have no anchors
+`recall_hit` counts 126, not 135, because the `no_answer` cases have no anchors
 to find — a case that should return nothing cannot contribute to a recall mean
 without corrupting it.
 
@@ -148,10 +159,15 @@ is the only reason to trust the numbers it now reports.
 | Two-lane conversational rewrite | `recall_hit` 0.7667 -> 0.9394, `ordering` -> 1.0000, both non-overlapping. Needed three new follow-up cases first: every existing case was a cold question, so the instrument could not see it — the same gap that hid BM25. |
 | Instrument hardening before D | **Not a system change.** All three remaining "failures" turned out to be instrument defects: two cases retrieved the right entry and *ranked it first* but scored 0.0 on `drain`/`drained` and `migration`/`migrations`, and the abstention case forbade a phrase that is the **user's own wording in the truthful entry**. Fixing them saturated the ruler at ~1.00 across the board, which is why four harder categories were added before any D mechanism was built. |
 | Harder case set | `recall_hit` 0.9394 -> 0.9231. A *lower* number from a *better* instrument — the four new categories are cases the system genuinely fails, which is the only kind worth adding. |
-| D4 retrieval-summary lane | **Mechanism verified, prompt not.** A hand-written summary carrying vocabulary the entry lacks takes `vocabulary_gap` 0.33 -> 1.00 and dereferences back to verbatim text. What that demonstrates is the *lane* — a summary hit reaching an entry the question could not — not the quality of the prompt's output, which needs a real model. |
+| D4 retrieval-summary lane | **Mechanism verified, prompt not.** A hand-written summary carrying vocabulary the entry lacks takes `vocabulary_gap` 0.33 -> 1.00 and dereferences back to verbatim text. Superseded by the write-time trigger lane in E3, whose prompt is specified for retrieval reach rather than summarisation. |
 | D2 two-stage distillation | **+0.0000, and correct.** With no key configured the lane is inert, so an unchanged eval is the expected result and confirms the stage gates off cleanly rather than perturbing recall. |
 | D1 supersession | **Not shipped.** Only one case (`pd-01`) fails, and its subject ("region") appears in neither entry, so deterministic linking cannot reach it. A wrong supersession link hides a true fact, so no link beats a guessed one. |
 | D3 confidence + usability gates | **Not shipped.** Cheap and deterministic, but nothing in the system emits helpful/harmful signals, so the fields would have no producer — recreating precisely the write-only trap this whole exercise was organised around avoiding. |
+| Serialization labels removed from the index | **Null on the existing set, and a real fix.** Entries were indexed as `"User: ...\nAssistant: ..."`, so every entry matched the rewrite lane's own `Prior user:` scaffolding. `0.9231 x 117/126 = 0.8571` exactly, with every category unchanged — a correctness fix should measure null, and this one does. |
+| Boilerplate reply removed from the corpus | **Instrument, not system.** All 90 seeded turns replied `"Noted."`; the rewrite lane folds prior assistant text into the query, so that one token linked every entry to every other. Removing it drops `recall_hit` 0.8571 → 0.8333, which is exactly one case (3/126) — vx-02, whose answer a direct probe shows the raw lane never retrieved at all. |
+| Stemming the retrieval tokenizer | `recall_hit` 0.8333 → **0.8810**, `inflection_gap` 0.00 → 1.00. `predecessor_query` reads 0.67 → 0.33 and that is **not** a regression: none of its three answers is lexically reachable, so every pass it ever recorded was a slot filled by an entry that barely scored. More real matches evict the freeloaders. |
+| Field-weighted BM25 document | **+0.0000, and not shipped.** BM25's length normalisation already ranks a short user statement above a verbose agent reply (0.732 vs 0.709 at weight 1), so the weight only widens a margin that was not in doubt. A ranking knob no test can distinguish from its absence is a liability. |
+| E3 write-time trigger lane | **+0.0000, and correct.** Inert with no key configured, exactly as the distillation lane was. Its mechanism is verified by a stub test on the real `vocabulary_gap` case; its prompt is not validated. |
 
 Three metric bugs were also caught by inspecting cases rather than trusting
 scores: substring anchors reported hits the system never made ("Wen" inside
@@ -160,12 +176,27 @@ the current entry mentions the superseded holder first ("Ravi handed on-call
 over to Mira"); and `run_std` went 0.0000 -> 0.0192 after the recency change,
 exposing real nondeterminism from same-millisecond entry ids.
 
-And two new cases initially **passed for the wrong reason**, which is the
-failure mode hardest to notice: one had both facts inside the two-turn rewrite
-window, so the rewrite query contained the answer verbatim and retrieved it by
-self-similarity; the other used values ("us-east-1" / "eu-central-1") sharing
-the token "1". Fixing both made `pd-01` fail honestly — which is how it came to
-be the case that D1 is measured against.
+Cases **passing for the wrong reason** is the failure mode hardest to notice,
+and it has now happened five times. Two early ones: a case with both facts
+inside the two-turn rewrite window, so the rewrite query contained the answer
+verbatim and retrieved it by self-similarity; and one whose values
+("us-east-1" / "eu-central-1") shared the token "1". Then three at once, all
+from the same cause — the shared `"Noted."` reply — which is what makes it
+worth a rule rather than a fix.
+
+**A case is not trusted until you have seen the path by which it passes.** The
+probe that settles it is cheap: ask whether the raw lane retrieves the
+answering entry at all. For `vocabulary_gap` and `predecessor_query` it never
+does, which is exactly what those categories assert, so any pass they record
+is a top-k slot filled by something that barely scored.
+
+Two harness guards came out of it. `load_cases` now rejects duplicate
+`case_id`s — a new category reused an id prefix and the run silently reported
+`n=6` for three cases under the other category's name. And `ab-03` was fixed
+for the second instance of a defect already recorded once: it forbade the bare
+words "named" and "called", and a distractor legitimately saying "the feature
+flag service is called switchboard" tripped it. Forbid only what a fabrication
+*about this subject* would produce.
 
 `run_std` is `0.0000` because the substrate path is fully deterministic, so any
 delta there is signal. That stops being true the moment an LLM or a semantic
