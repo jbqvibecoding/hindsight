@@ -235,7 +235,9 @@ class LessonStore:
 
     def _propose(self, slice_: list[SubstrateEntry], client: LLMClient) -> list[dict] | None:
         rendered = "\n\n".join(f"[{e.entry_id}]\n{e.as_text()}" for e in slice_)
-        payload = client.complete_json(system=self._curator, user=rendered, max_tokens=1200)
+        payload = client.complete_json(
+            system=self._curator, user=rendered, max_tokens=1200, call_site="distill.curator"
+        )
         if payload is None:
             return None
         lessons = payload.get("lessons")
@@ -274,7 +276,9 @@ class LessonStore:
                 "ENTITY GLOSSARY:\n" + (", ".join(glossary) if glossary else "(empty)"),
             ]
         )
-        payload = client.complete_json(system=self._writer, user=user, max_tokens=800)
+        payload = client.complete_json(
+            system=self._writer, user=user, max_tokens=800, call_site="distill.judge"
+        )
         if payload is None:
             return None
 

@@ -29,6 +29,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+from . import ledger
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://api.anthropic.com/v1/messages"
@@ -83,6 +85,7 @@ class LLMClient:
         user: str,
         max_tokens: int = 1024,
         temperature: float = 0.0,
+        call_site: str = "",
     ) -> str | None:
         """One completion. ``None`` means the call failed, not that it was empty."""
         if not self.available():
@@ -99,6 +102,7 @@ class LLMClient:
         ).encode("utf-8")
 
         last_error: Exception | None = None
+        started = time.monotonic()
         for attempt in range(self._max_retries):
             request = urllib.request.Request(
                 self._base_url,
@@ -113,7 +117,19 @@ class LLMClient:
             try:
                 with urllib.request.urlopen(request, timeout=self._timeout) as response:
                     payload = json.loads(response.read().decode("utf-8"))
-                return _text_of(payload)
+                text = _text_of(payload)
+                # Only successful calls are billed, so only they are recorded.
+                # The provider's own usage block is passed through untouched;
+                # when it is absent the row says so rather than guessing.
+                ledger.record(
+                    call_site=call_site,
+                    model=self._model,
+                    latency_s=time.monotonic() - started,
+                    prompt_chars=len(system) + len(user),
+                    completion_chars=len(text or ""),
+                    usage=payload.get("usage") if isinstance(payload, dict) else None,
+                )
+                return text
             except urllib.error.HTTPError as e:
                 detail = ""
                 # The body is for the log line only, so failing to read it must
@@ -142,6 +158,7 @@ class LLMClient:
         user: str,
         max_tokens: int = 1024,
         temperature: float = 0.0,
+        call_site: str = "",
     ) -> dict[str, Any] | None:
         """A completion parsed as a JSON object, or ``None``.
 
@@ -150,7 +167,11 @@ class LLMClient:
         a successful empty result.
         """
         raw = self.complete(
-            system=system, user=user, max_tokens=max_tokens, temperature=temperature
+            system=system,
+            user=user,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            call_site=call_site,
         )
         if raw is None:
             return None

@@ -249,7 +249,10 @@ class TriggerStore:
         failed = False
         for entry in pending:
             payload = client.complete_json(
-                system=system, user=entry.as_text(), max_tokens=MAX_TRIGGER_TOKENS
+                system=system,
+                user=entry.as_text(),
+                max_tokens=MAX_TRIGGER_TOKENS,
+                call_site="triggers.generate",
             )
             if payload is None:
                 # Stop on the first outage rather than hammering a dead endpoint
