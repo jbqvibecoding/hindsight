@@ -192,6 +192,16 @@ def _entry_document(entry: SubstrateEntry) -> str:
 
     A field label is part of how we serialize a turn, never part of what the
     user said, so it has no business being searchable.
+
+    This is also the one place that composes an entry's searchable text, which
+    is where a weighted field would go — T-Mem weights its BM25 documents by
+    repeating a field's text (``content x3``, anticipated queries ``x2`` in
+    ``build_item_searchable_text``), so term frequency carries the weight and
+    the scorer needs no change. Weighting the user's half above the
+    assistant's was tried here and measured **+0.0000**: BM25's length
+    normalisation already favours a short user statement over a verbose agent
+    reply, so the weight only widens a margin that was not in doubt. It is not
+    shipped, because an unmeasured ranking knob is a liability.
     """
     return "\n".join(part for part in (entry.user, entry.assistant) if part)
 
