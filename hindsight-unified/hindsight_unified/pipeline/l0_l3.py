@@ -31,7 +31,7 @@ from ..adapters.openviking_injection import OpenVikingInjectionAdapter
 from ..distill import LessonStore
 from ..llm import LLMClient
 from ..substrate import MarkdownSubstrate
-from ..summarize import SummaryStore
+from ..triggers import TriggerStore
 from ..types import CaptureEvent, Recalled, RecallRequest
 from .conversational import (
     RECENT_TURNS,
@@ -103,7 +103,7 @@ class LayeredPipeline:
         self._mempalace = mempalace
         self._openviking = openviking
         self._llm = llm if llm is not None else LLMClient()
-        self._summaries = SummaryStore()
+        self._triggers = TriggerStore()
         self._lessons = LessonStore()
         self._stages = self._build_stages()
         # Fails construction, not a later run, if the one-fatal-stage contract
@@ -173,12 +173,13 @@ class LayeredPipeline:
         if substrate_hits:
             ranked_lists.append(substrate_hits)
 
-        # Third lane: the derived summaries. It votes on ranking only — every
-        # hit is dereferenced back to its verbatim entry before it can be
-        # shown, so a summary can change what surfaces but never what is read.
-        summary_lane = self._summary_lane(bank_dir, req.query, req.limit)
-        if summary_lane:
-            ranked_lists.append(summary_lane)
+        # Third lane: write-time triggers — the phrases a future question was
+        # predicted to use. It votes on ranking only: every hit is dereferenced
+        # back to its verbatim entry before it can be shown, so a trigger can
+        # change what surfaces and never what is read.
+        trigger_lane = self._trigger_lane(bank_dir, req.query, req.limit)
+        if trigger_lane:
+            ranked_lists.append(trigger_lane)
 
         # Fourth lane: distilled lessons. Unlike a summary, a lesson IS shown —
         # it is a legitimate derived memory — so it is labelled as such and
@@ -226,9 +227,9 @@ class LayeredPipeline:
             for entry, score in self._substrate.search(bank_dir, query, limit=limit)
         ]
 
-    def _summary_lane(self, bank_dir: Path, query: str, limit: int) -> list[Recalled]:
-        """Summary hits, resolved to the verbatim entries they describe."""
-        hits = self._summaries.search(bank_dir, query, limit=limit)
+    def _trigger_lane(self, bank_dir: Path, query: str, limit: int) -> list[Recalled]:
+        """Trigger hits, resolved to the verbatim entries they point at."""
+        hits = self._triggers.search(bank_dir, query, limit=limit)
         if not hits:
             return []
         by_id = {e.entry_id: e for e in self._substrate._load(bank_dir)}
@@ -236,13 +237,13 @@ class LayeredPipeline:
         for entry_id, score in hits:
             entry = by_id.get(entry_id)
             if entry is None:
-                # The summary outlived its entry; it is a derivative, so the
+                # The trigger outlived its entry; it is a derivative, so the
                 # missing source wins and the hit is dropped.
                 continue
             lane.append(
                 Recalled(
                     text=entry.as_text(),
-                    source="summary",
+                    source="trigger",
                     score=score,
                     metadata={"entry_id": entry.entry_id, "seq": entry.seq},
                 )
@@ -268,19 +269,19 @@ class LayeredPipeline:
 
     # -- L2 ------------------------------------------------------------------
 
-    def _summarize_stage(self, bank: str, bank_dir: Path) -> bool:
-        """Derive retrieval summaries for entries that lack a current one.
+    def _trigger_stage(self, bank: str, bank_dir: Path) -> bool:
+        """Generate write-time triggers for entries that lack current ones.
 
         Raises on an LLM outage so the stage reports ``errored`` and its
         watermark stays put: an unreachable model is not the same as "nothing
-        left to summarise", and sealing entries on the strength of calls that
-        never ran would leave them permanently unsummarised.
+        left to anticipate", and sealing entries on the strength of calls that
+        never ran would leave them permanently unreachable by this lane.
         """
-        written = self._summaries.generate_missing(
+        written = self._triggers.generate_missing(
             bank_dir, self._substrate._load(bank_dir), self._llm
         )
         if written is None:
-            raise RuntimeError("summary generation aborted: LLM unreachable")
+            raise RuntimeError("trigger generation aborted: LLM unreachable")
         return written > 0
 
     def _distill_stage(self, bank: str, bank_dir: Path) -> bool:
@@ -321,8 +322,8 @@ class LayeredPipeline:
 
         stages.append(
             Stage(
-                name="summarize",
-                run=self._summarize_stage,
+                name="triggers",
+                run=self._trigger_stage,
                 # Gated before any cost: with no model configured the whole
                 # lane is simply absent, which is a supported deployment
                 # rather than a degraded one.

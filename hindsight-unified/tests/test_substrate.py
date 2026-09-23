@@ -95,4 +95,3 @@ def test_stemming_keeps_distinct_words_apart(tmp_path: Path) -> None:
     sub, bank = _make(tmp_path)
     sub.append(bank, session_key="s", user="the land registry export", assistant="ok")
     assert sub.search(bank, "lane") == []
-

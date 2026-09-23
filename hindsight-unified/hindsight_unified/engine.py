@@ -31,7 +31,7 @@ from .distill import LESSON_FILE
 from .pipeline import LayeredPipeline
 from .pipeline.stages import RunOutcome
 from .substrate import MarkdownSubstrate, SingletonLockHeld
-from .summarize import SUMMARY_FILE
+from .triggers import TRIGGER_FILE
 from .types import CaptureEvent, RecallMarker, RecallRequest
 
 logger = logging.getLogger(__name__)
@@ -330,10 +330,10 @@ class UnifiedEngine:
         before = self._substrate.count(bank_dir)
         if index.exists():
             index.unlink()
-        # The summary sidecar is a derivative too, so it goes with the index.
-        # Leaving it would rank against summaries of entries whose ids the
+        # The trigger sidecar is a derivative too, so it goes with the index.
+        # Leaving it would rank against triggers pointing at entry ids the
         # rebuild may not reproduce.
-        for derived in (bank_dir / SUMMARY_FILE, bank_dir / LESSON_FILE):
+        for derived in (bank_dir / TRIGGER_FILE, bank_dir / LESSON_FILE):
             if derived.exists():
                 derived.unlink()
         self._substrate.forget_caches(bank_dir)
@@ -344,7 +344,7 @@ class UnifiedEngine:
             "ok": True,
             "entries_before": before,
             "entries_rebuilt": recovered,
-            "derived_dropped": ["summaries", "lessons"],
+            "derived_dropped": ["triggers", "lessons"],
             "brain_reindexed": False,  # L1 re-extraction is the brain's own job
         }
 
