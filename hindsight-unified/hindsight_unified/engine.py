@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from . import forget as forget_mod
 from .adapters import (
     EverosSubstrateAdapter,
     HindsightCoreAdapter,
@@ -268,6 +269,67 @@ class UnifiedEngine:
                 }
                 for entry, score in hits
             ]
+        }
+
+    # -- forgetting ----------------------------------------------------------
+
+    def forget_preview(self, *, bank: str, query: str, limit: int = 5) -> dict[str, Any]:
+        """What forgetting this query *would* hit. Changes nothing.
+
+        The only thing a query is allowed to do. Matching is lexical and a
+        broad query selects more than intended, so the caller — or the user,
+        through the agent — sees the candidates and then forgets by id.
+        """
+        bank_dir = self._settings.bank_dir(bank)
+        hits = self._substrate.search(bank_dir, query, limit=max(1, min(limit, 20)))
+        return {
+            "candidates": [
+                {
+                    "entry_id": entry.entry_id,
+                    "text": entry.as_text(),
+                    "session_key": entry.session_key,
+                    "score": score,
+                }
+                for entry, score in hits
+            ]
+        }
+
+    def forget(self, *, bank: str, entry_ids: list[str], reason: str = "") -> dict[str, Any]:
+        """Remove entries from recall, by id only.
+
+        Ids the bank does not hold are reported, never silently dropped: a
+        caller that mistyped an id must not be told its memory was forgotten.
+        """
+        bank_dir = self._settings.bank_dir(bank)
+        requested = list(dict.fromkeys(str(i) for i in entry_ids if i))
+        known = {entry.entry_id for entry in self._substrate._load(bank_dir)}
+        already = forget_mod.forgotten_ids(bank_dir)
+        targets = [i for i in requested if i in known and i not in already]
+        batch_id = forget_mod.forget(bank_dir, targets, reason=reason) if targets else ""
+        return {
+            "ok": True,
+            "forgotten": targets,
+            "already_forgotten": [i for i in requested if i in already],
+            "unknown": [i for i in requested if i not in known],
+            "batch_id": batch_id,
+            # Stated in every response, so no caller can relay a forget to a
+            # user as an erasure.
+            "still_on_disk": bool(targets),
+            "semantic_brain_unaffected": self._hindsight is not None,
+        }
+
+    def restore(self, *, bank: str, entry_ids: list[str]) -> dict[str, Any]:
+        """Undo a forget. Soft deletion is only safe to offer because of this."""
+        bank_dir = self._settings.bank_dir(bank)
+        requested = list(dict.fromkeys(str(i) for i in entry_ids if i))
+        gone = forget_mod.forgotten_ids(bank_dir)
+        targets = [i for i in requested if i in gone]
+        batch_id = forget_mod.restore(bank_dir, targets) if targets else ""
+        return {
+            "ok": True,
+            "restored": targets,
+            "not_forgotten": [i for i in requested if i not in gone],
+            "batch_id": batch_id,
         }
 
     def end_session(

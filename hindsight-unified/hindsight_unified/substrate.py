@@ -46,6 +46,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .forget import forgotten_ids
+
 try:  # POSIX advisory locking; absent on Windows.
     import fcntl
 
@@ -673,12 +675,34 @@ class MarkdownSubstrate:
         the substrate already holds it — so the history costs one read and no
         new API surface for the client to pass it in.
         """
-        entries = self._load(bank_dir)
+        entries = self.live(bank_dir)
         if session_key:
             entries = [e for e in entries if e.session_key == session_key]
         return [(e.user, e.assistant) for e in entries[-limit:]]
 
+    def live(self, bank_dir: Path) -> list[SubstrateEntry]:
+        """Entries recall may use: everything in the log, minus the forgotten.
+
+        Every read that feeds recall goes through here — search, the turns the
+        conversational rewrite folds into its query, the entries a trigger or
+        lesson is derived from. A forgotten turn's words must not steer
+        retrieval either, so the rewrite lane is filtered too, not just results.
+
+        ``_load`` stays unfiltered on purpose. Occurrence counting and the
+        idempotency lookup must see the whole log: a forgotten turn still holds
+        its entry id. Usually the timestamp prefix already separates a statement
+        from its repetition, but inside one millisecond only the occurrence
+        ordinal does, and a count that skipped forgotten entries would hand the
+        repeat the forgotten entry's own id — tombstone included.
+        """
+        entries = self._load(bank_dir)
+        gone = forgotten_ids(bank_dir)
+        if not gone:
+            return entries
+        return [entry for entry in entries if entry.entry_id not in gone]
+
     def count(self, bank_dir: Path) -> int:
+        """Entries in the log, forgotten ones included — they are still on disk."""
         return len(self._load(bank_dir))
 
     def search(
@@ -704,7 +728,7 @@ class MarkdownSubstrate:
             return []
 
         entries = [
-            e for e in self._load(bank_dir) if not session_key or e.session_key == session_key
+            e for e in self.live(bank_dir) if not session_key or e.session_key == session_key
         ]
         docs = [(e, _tokenize(_entry_document(e))) for e in entries]
         docs = [(e, tokens) for e, tokens in docs if tokens]

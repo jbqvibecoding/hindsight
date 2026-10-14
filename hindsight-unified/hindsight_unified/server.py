@@ -14,6 +14,9 @@ near-copy) plus ``/reflect``:
     POST /recall               {query, bank|session_key, user_id, limit, ...}
     POST /capture              {user_content, assistant_content, bank|session_key,
                                 idempotency_key?}
+    POST /forget/preview       {bank, query, limit?}   -> candidates; changes nothing
+    POST /forget               {bank, entry_ids, reason?}  ids only, never a query
+    POST /forget/restore       {bank, entry_ids}
     POST /search/memories      {query, limit, type}
     POST /search/conversations {query, limit, session_key}
     POST /session/end          {bank|session_key}
@@ -109,6 +112,31 @@ class Handler(BaseHTTPRequestHandler):
                         assistant_content=body.get("assistant_content", ""),
                         user_id=body.get("user_id", ""),
                         idempotency_key=str(body.get("idempotency_key", "") or ""),
+                    ),
+                )
+            elif path == "/forget/preview":
+                self._send(
+                    200,
+                    engine.forget_preview(
+                        bank=_bank_of(body),
+                        query=body.get("query", ""),
+                        limit=int(body.get("limit", 5) or 5),
+                    ),
+                )
+            elif path == "/forget":
+                self._send(
+                    200,
+                    engine.forget(
+                        bank=_bank_of(body),
+                        entry_ids=list(body.get("entry_ids") or []),
+                        reason=str(body.get("reason", "") or ""),
+                    ),
+                )
+            elif path == "/forget/restore":
+                self._send(
+                    200,
+                    engine.restore(
+                        bank=_bank_of(body), entry_ids=list(body.get("entry_ids") or [])
                     ),
                 )
             elif path == "/search/memories":

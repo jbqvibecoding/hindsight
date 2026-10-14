@@ -29,6 +29,7 @@ from ..adapters.base import UnifiedAdapter
 from ..adapters.mempalace_index import MempalaceIndexAdapter
 from ..adapters.openviking_injection import OpenVikingInjectionAdapter
 from ..distill import LessonStore
+from ..forget import forgotten_ids
 from ..llm import LLMClient
 from ..substrate import AppendOutcome, MarkdownSubstrate
 from ..triggers import TriggerStore
@@ -241,7 +242,10 @@ class LayeredPipeline:
         hits = self._triggers.search(bank_dir, query, limit=limit)
         if not hits:
             return []
-        by_id = {e.entry_id: e for e in self._substrate._load(bank_dir)}
+        # Live entries only: a trigger for a forgotten turn then resolves to
+        # nothing and is dropped by the same rule as a trigger whose source is
+        # gone, so forgetting needs no separate filter in this lane.
+        by_id = {e.entry_id: e for e in self._substrate.live(bank_dir)}
         lane: list[Recalled] = []
         for entry_id, score in hits:
             entry = by_id.get(entry_id)
@@ -262,6 +266,7 @@ class LayeredPipeline:
     def _lesson_lane(self, bank_dir: Path, query: str, limit: int) -> list[Recalled]:
         """Distilled lessons as a ranked lane, tagged so they are never
         mistaken for something the user said."""
+        gone = forgotten_ids(bank_dir)
         return [
             Recalled(
                 text=lesson.render(),
@@ -274,6 +279,11 @@ class LayeredPipeline:
                 },
             )
             for lesson, score in self._lessons.search(bank_dir, query, limit=limit)
+            # A lesson distilled from a forgotten turn can restate it outright
+            # ("the user's staging password is ..."), so it goes if *any* of
+            # its sources was forgotten. Hiding a still-valid lesson is the
+            # cheaper mistake.
+            if not gone.intersection(lesson.member_entry_ids)
         ]
 
     # -- L2 ------------------------------------------------------------------
@@ -287,7 +297,7 @@ class LayeredPipeline:
         never ran would leave them permanently unreachable by this lane.
         """
         written = self._triggers.generate_missing(
-            bank_dir, self._substrate._load(bank_dir), self._llm
+            bank_dir, self._substrate.live(bank_dir), self._llm
         )
         if written is None:
             raise RuntimeError("trigger generation aborted: LLM unreachable")
@@ -300,7 +310,7 @@ class LayeredPipeline:
         stays put — an unreachable model must never mark these entries
         distilled forever.
         """
-        accepted = self._lessons.distill(bank_dir, self._substrate._load(bank_dir), self._llm)
+        accepted = self._lessons.distill(bank_dir, self._substrate.live(bank_dir), self._llm)
         if accepted is None:
             raise RuntimeError("distillation aborted: LLM unreachable")
         return accepted > 0
