@@ -101,5 +101,229 @@
       "ordering": 1.0,
       "recall_hit": 0.0
     }
+  },
+  "per_case": {
+    "ab-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ab-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ab-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "cr-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "cr-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "cr-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "eo-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "eo-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "eo-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "fu-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "fu-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "fu-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ie-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ie-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ie-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "if-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "if-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "if-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ix-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ix-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ix-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ku-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ku-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ku-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ms-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ms-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "ms-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "nf-01": {
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "nf-02": {
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "nf-03": {
+      "abstention": 1.0,
+      "ordering": 1.0
+    },
+    "pd-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 0.0
+    },
+    "pd-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 0.0
+    },
+    "pd-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "pf-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "pf-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "pf-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "sm-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "sm-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "sm-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "tr-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "tr-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "tr-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "vx-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 0.0
+    },
+    "vx-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 0.0
+    },
+    "vx-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 0.0
+    }
   }
 }

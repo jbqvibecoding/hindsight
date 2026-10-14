@@ -354,8 +354,16 @@ def main(argv: list[str] | None = None) -> int:
         baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
         gate = M.check_regression(summary, baseline)
         print("\n" + gate.report())
+        compared = sorted(set(summary.metrics) & set(baseline.get("metrics") or {}))
         for name in sorted(summary.metrics):
-            print("  " + M.describe_delta(summary, baseline, name))
+            print("  " + M.describe_delta(summary, baseline, name, comparisons=len(compared)))
+        # Which cases moved, in either direction: the line to read first.
+        baseline_cases = baseline.get("per_case") or {}
+        for name in compared:
+            paired = M.paired_delta(summary.per_case, baseline_cases, name)
+            line = M.changed_cases(paired) if paired else ""
+            if line:
+                print("  " + line)
         if args.gate and not gate.passed:
             exit_code = 1
     else:

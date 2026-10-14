@@ -284,12 +284,16 @@ class Aggregate:
     metrics: dict[str, MetricSummary] = field(default_factory=dict)
     by_category: dict[str, dict[str, float]] = field(default_factory=dict)
     runs: int = 0
+    # case_id -> metric -> mean score over runs. Stored in the baseline so the
+    # next run can be compared case by case rather than mean against mean.
+    per_case: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "runs": self.runs,
             "metrics": {k: v.as_dict() for k, v in self.metrics.items()},
             "by_category": self.by_category,
+            "per_case": self.per_case,
         }
 
 
@@ -358,7 +362,106 @@ def aggregate(runs: list[list[dict[str, Any]]]) -> Aggregate:
         category: {name: round(statistics.fmean(scores), 4) for name, scores in metrics.items()}
         for category, metrics in sorted(buckets.items())
     }
+
+    per_case: dict[str, dict[str, list[float]]] = {}
+    for run in runs:
+        for row in run:
+            case_id = row.get("case_id")
+            if not case_id:
+                continue
+            for name, score in (row.get("metrics") or {}).items():
+                if score is not None:
+                    per_case.setdefault(case_id, {}).setdefault(name, []).append(float(score))
+    out.per_case = {
+        case_id: {name: round(statistics.fmean(scores), 4) for name, scores in metrics.items()}
+        for case_id, metrics in sorted(per_case.items())
+    }
     return out
+
+
+# -- paired comparison -----------------------------------------------------------
+
+
+@dataclass(slots=True)
+class PairedDelta:
+    """A change measured on the cases two runs share, and how sure we are of it.
+
+    gbrain's methodology specifies this - a paired bootstrap that "draws
+    question-level pairs (same question, mode A vs mode B), so question-level
+    variance is differenced out", with a Bonferroni correction across
+    comparisons - and its compare command prints that methodology without
+    running it. The specification is sound; this is it, run.
+    """
+
+    metric: str
+    delta: float
+    ci_lower: float
+    ci_upper: float
+    p_value: float
+    p_adjusted: float
+    n_pairs: int
+    improved: list[str] = field(default_factory=list)
+    worsened: list[str] = field(default_factory=list)
+    only_current: int = 0
+    only_baseline: int = 0
+
+    @property
+    def significant(self) -> bool:
+        """Both conditions, as the spec states them: the interval excludes zero
+        AND the corrected p-value clears 0.05."""
+        excludes_zero = self.ci_lower > 0 or self.ci_upper < 0
+        return excludes_zero and self.p_adjusted <= 0.05
+
+
+def paired_delta(
+    current: dict[str, dict[str, float]],
+    baseline: dict[str, dict[str, float]],
+    metric: str,
+    *,
+    comparisons: int = 1,
+    samples: int = 10000,
+    seed: int = 42,
+) -> PairedDelta | None:
+    """Bootstrap the mean per-case difference over cases both sides scored.
+
+    Pairing is what makes this the right test here. Every run answers the same
+    cases, so most of the spread between cases is shared by both sides and
+    cancels in the difference - comparing two independent intervals for
+    overlap, as this harness used to, throws that away and asks a weaker
+    question. It also fixes a confusion that bit this harness directly: adding
+    cases changes a mean's denominator, so a run with three new failing cases
+    *looked* like a regression of every metric. Cases present on only one side
+    are counted and reported, never silently folded in.
+    """
+    shared = sorted(
+        case_id
+        for case_id in set(current) & set(baseline)
+        if metric in current[case_id] and metric in baseline[case_id]
+    )
+    if not shared:
+        return None
+    diffs = [current[c][metric] - baseline[c][metric] for c in shared]
+    rng = random.Random(seed)
+    n = len(diffs)
+    means = sorted(sum(rng.choices(diffs, k=n)) / n for _ in range(samples))
+    lower = means[int(0.025 * samples)]
+    upper = means[min(samples - 1, int(0.975 * samples))]
+    at_or_below = sum(1 for m in means if m <= 0) / samples
+    at_or_above = sum(1 for m in means if m >= 0) / samples
+    p_value = min(1.0, 2 * min(at_or_below, at_or_above))
+    return PairedDelta(
+        metric=metric,
+        delta=statistics.fmean(diffs),
+        ci_lower=lower,
+        ci_upper=upper,
+        p_value=p_value,
+        p_adjusted=min(1.0, p_value * max(1, comparisons)),
+        n_pairs=n,
+        improved=[c for c, d in zip(shared, diffs, strict=True) if d > 0],
+        worsened=[c for c, d in zip(shared, diffs, strict=True) if d < 0],
+        only_current=sum(1 for c in current if c not in baseline),
+        only_baseline=sum(1 for c in baseline if c not in current),
+    )
 
 
 # -- regression gate -----------------------------------------------------------
@@ -389,6 +492,25 @@ def check_regression(
     findings: list[str] = []
     passed = True
 
+    baseline_cases = (baseline or {}).get("per_case") or {}
+    if current.per_case and baseline_cases:
+        # Paired gate: fail only on a regression that is significant on the
+        # cases both runs share. New cases are reported, not held against
+        # the run - a harder case set is not a worse system.
+        for name in names:
+            result = paired_delta(current.per_case, baseline_cases, name, comparisons=len(names))
+            if result is None:
+                findings.append(f"{name}: no shared cases to compare")
+                continue
+            summary = current.metrics.get(name)
+            noise = (summary.run_std if summary else None) or 0.0
+            if result.significant and result.delta < 0 and abs(result.delta) > noise:
+                passed = False
+                findings.append(f"{name}: significant regression on shared cases")
+            else:
+                findings.append(f"{name}: no significant regression on shared cases")
+        return GateResult(passed, findings)
+
     for name in names:
         summary = current.metrics.get(name)
         recorded = baseline_metrics.get(name)
@@ -409,8 +531,16 @@ def check_regression(
     return GateResult(passed, findings)
 
 
-def describe_delta(current: Aggregate, previous: dict[str, Any], metric: str) -> str:
+def describe_delta(
+    current: Aggregate, previous: dict[str, Any], metric: str, *, comparisons: int = 1
+) -> str:
     """State a change honestly, including when it is indistinguishable from noise."""
+    baseline_cases = (previous or {}).get("per_case") or {}
+    if current.per_case and baseline_cases:
+        result = paired_delta(current.per_case, baseline_cases, metric, comparisons=comparisons)
+        if result is not None:
+            summary = current.metrics.get(metric)
+            return _describe_paired(result, noise=summary.run_std if summary else None)
     summary = current.metrics.get(metric)
     recorded = ((previous or {}).get("metrics") or {}).get(metric)
     if summary is None or not recorded:
@@ -430,3 +560,40 @@ def describe_delta(current: Aggregate, previous: dict[str, Any], metric: str) ->
     else:
         verdict = "improvement" if delta > 0 else "regression"
     return f"{metric}: {before:.4f} -> {summary.mean:.4f} ({delta:+.4f}) — {verdict}"
+
+
+def _describe_paired(r: PairedDelta, *, noise: float | None = None) -> str:
+    # The noise floor is checked first, exactly as on the unpaired path. Per-case
+    # scores are means over runs, so pairing removes spread *between cases* but
+    # not spread *between runs*: with a nondeterministic component (a judge, an
+    # LLM lane), a case's mean can land on the baseline's by chance. A delta
+    # inside run-to-run noise supports no verdict, paired or not.
+    if noise and abs(r.delta) <= noise:
+        verdict = f"within run-to-run noise (run_std={noise:.4f}) — no conclusion"
+    elif r.delta == 0 and not r.improved and not r.worsened:
+        verdict = "no change on any shared case"
+    elif r.significant:
+        verdict = "improvement" if r.delta > 0 else "regression"
+    else:
+        verdict = "not significant"
+    extra = []
+    if r.only_current:
+        extra.append(f"{r.only_current} new case(s) not in baseline")
+    if r.only_baseline:
+        extra.append(f"{r.only_baseline} baseline case(s) not run")
+    tail = f"; {', '.join(extra)}" if extra else ""
+    return (
+        f"{r.metric}: paired delta {r.delta:+.4f} [{r.ci_lower:+.4f}, {r.ci_upper:+.4f}] "
+        f"p_adj={r.p_adjusted:.4f} over {r.n_pairs} shared cases "
+        f"({len(r.improved)} improved, {len(r.worsened)} worsened{tail}) — {verdict}"
+    )
+
+
+def changed_cases(r: PairedDelta, *, limit: int = 12) -> str:
+    """Which cases moved. The most actionable line in the report."""
+    marks = [f"+{c}" for c in r.improved] + [f"-{c}" for c in r.worsened]
+    if not marks:
+        return ""
+    shown = " ".join(marks[:limit])
+    more = f" (+{len(marks) - limit} more)" if len(marks) > limit else ""
+    return f"{r.metric} changed: {shown}{more}"

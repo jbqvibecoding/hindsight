@@ -162,6 +162,94 @@ def test_delta_refuses_a_verdict_inside_the_noise_floor() -> None:
     assert "no conclusion" in verdict
 
 
+# -- paired comparison ---------------------------------------------------------
+
+
+def _deterministic(scores: dict[str, float], runs: int = 3) -> M.Aggregate:
+    """An aggregate whose runs all agree, as the substrate path's do."""
+    run = [{"case_id": c, "category": "x", "metrics": {"m": v}} for c, v in scores.items()]
+    return M.aggregate([run] * runs)
+
+
+def test_per_case_scores_are_kept_as_means_over_runs() -> None:
+    def run(score: float) -> list[dict]:
+        return [{"case_id": "a", "category": "c", "metrics": {"m": score}}]
+
+    agg = M.aggregate([run(1.0), run(0.0), run(1.0)])
+    assert agg.per_case == {"a": {"m": 0.6667}}
+    assert "per_case" in agg.as_dict()
+
+
+def test_new_failing_cases_are_not_a_regression_of_the_old_ones() -> None:
+    """The defect that motivated pairing, pinned.
+
+    Adding three cases the system fails moved recall_hit 0.9231 -> 0.8571,
+    tripped the floor gate, and had to be shown by hand (0.9231 x 117/126) to
+    have changed nothing on the existing cases. A paired comparison answers
+    that directly.
+    """
+    old = {f"c{i:02d}": 1.0 for i in range(39)} | {"c39": 0.0, "c40": 0.0, "c41": 0.0}
+    new = old | {"new1": 0.0, "new2": 0.0, "new3": 0.0}
+    baseline = _deterministic(old).as_dict()
+    current = _deterministic(new)
+
+    verdict = M.describe_delta(current, baseline, "m")
+    assert "over 42 shared cases" in verdict
+    assert "3 new case(s) not in baseline" in verdict
+    assert "no change on any shared case" in verdict
+    assert M.check_regression(current, baseline).passed
+
+    # The unpaired floor rule, given the same data, calls it a regression.
+    unpaired = {k: v for k, v in baseline.items() if k != "per_case"}
+    assert not M.check_regression(current, unpaired).passed
+
+
+def test_a_broad_improvement_is_significant() -> None:
+    before = {f"c{i:02d}": 0.0 for i in range(40)}
+    after = {c: (1.0 if i < 12 else 0.0) for i, c in enumerate(before)}
+    result = M.paired_delta(_deterministic(after).per_case, _deterministic(before).per_case, "m")
+    assert result is not None and result.significant and result.delta > 0
+    assert len(result.improved) == 12 and result.worsened == []
+
+
+def test_a_single_flipped_case_is_named_but_not_called_significant() -> None:
+    """Significance is about generalising beyond these cases; which case moved
+    is a fact either way, so it is always reported."""
+    before = {f"c{i:02d}": 1.0 for i in range(40)}
+    after = before | {"c07": 0.0}
+    result = M.paired_delta(_deterministic(after).per_case, _deterministic(before).per_case, "m")
+    assert result is not None and not result.significant
+    assert result.worsened == ["c07"]
+    assert M.changed_cases(result) == "m changed: -c07"
+
+
+def test_bonferroni_scales_the_p_value_by_the_number_of_comparisons() -> None:
+    before = {f"c{i:02d}": 0.0 for i in range(40)}
+    after = {c: (1.0 if i < 3 else 0.0) for i, c in enumerate(before)}
+    one = M.paired_delta(_deterministic(after).per_case, _deterministic(before).per_case, "m")
+    three = M.paired_delta(
+        _deterministic(after).per_case, _deterministic(before).per_case, "m", comparisons=3
+    )
+    assert one is not None and three is not None
+    assert three.p_adjusted == pytest.approx(min(1.0, one.p_value * 3))
+
+
+def test_paired_results_are_reproducible() -> None:
+    before = {f"c{i:02d}": float(i % 2) for i in range(30)}
+    after = {c: 1.0 for c in before}
+    a = M.paired_delta(_deterministic(after).per_case, _deterministic(before).per_case, "m")
+    b = M.paired_delta(_deterministic(after).per_case, _deterministic(before).per_case, "m")
+    assert a == b
+
+
+def test_a_baseline_without_per_case_scores_still_compares() -> None:
+    """Baselines written before pairing existed fall back to the old rule."""
+    before = _deterministic({"a": 1.0, "b": 0.0}).as_dict()
+    before.pop("per_case")
+    verdict = M.describe_delta(_deterministic({"a": 1.0, "b": 0.0}), before, "m")
+    assert "paired" not in verdict
+
+
 # -- end to end ----------------------------------------------------------------
 
 
