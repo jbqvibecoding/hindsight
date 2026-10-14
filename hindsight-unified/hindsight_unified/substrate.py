@@ -332,6 +332,14 @@ class SubstrateEntry:
         return "\n".join(parts)
 
 
+@dataclass(frozen=True, slots=True)
+class AppendOutcome:
+    """What an append did: the entry id, and whether this call wrote it."""
+
+    entry_id: str
+    created: bool
+
+
 class SingletonLockHeld(RuntimeError):
     """Another process already owns this memory root."""
 
@@ -410,6 +418,38 @@ class MarkdownSubstrate:
     ) -> str:
         """Append one verbatim turn. Returns the entry id.
 
+        Use :meth:`append_turn` when you need to know whether a write happened.
+        """
+        return self.append_turn(
+            bank_dir,
+            session_key=session_key,
+            user=user,
+            assistant=assistant,
+            ts=ts,
+            metadata=metadata,
+            idempotency_key=idempotency_key,
+        ).entry_id
+
+    def append_turn(
+        self,
+        bank_dir: Path,
+        *,
+        session_key: str,
+        user: str,
+        assistant: str,
+        ts: float = 0.0,
+        metadata: dict[str, Any] | None = None,
+        idempotency_key: str = "",
+    ) -> AppendOutcome:
+        """Append one verbatim turn, reporting whether it was actually written.
+
+        ``created`` is decided inside the bank lock, in the same critical
+        section as the write, so a caller can act on it without racing: a retry
+        that arrives while the original request is still in flight sees the
+        original's id and ``created=False``. That is the case the flag exists
+        for — the pipeline must not fan a replayed turn out to the adapters, or
+        the semantic brain ingests it twice even though the log holds it once.
+
         Writes two things atomically-enough for crash safety: a human-readable
         markdown log (truth, append mode) and a machine-readable jsonl index
         line (rebuildable). The jsonl is what search reads; the markdown is what
@@ -433,7 +473,7 @@ class MarkdownSubstrate:
             if idempotency_key:
                 existing = self._lookup_idem(bank_dir, idempotency_key)
                 if existing:
-                    return existing
+                    return AppendOutcome(entry_id=existing, created=False)
 
             occurrence = self._next_occurrence(bank_dir, digest)
             entry_id = derive_entry_id(
@@ -477,7 +517,7 @@ class MarkdownSubstrate:
             self._index_size[key] = self._index_bytes(bank_dir)
             if idempotency_key:
                 self._idem_keys.setdefault(key, {})[idempotency_key] = entry_id
-        return entry_id
+        return AppendOutcome(entry_id=entry_id, created=True)
 
     @contextmanager
     def _bank_lock(self, bank_dir: Path) -> Iterator[None]:

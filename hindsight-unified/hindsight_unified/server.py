@@ -12,7 +12,8 @@ near-copy) plus ``/reflect``:
 
     GET  /health
     POST /recall               {query, bank|session_key, user_id, limit, ...}
-    POST /capture              {user_content, assistant_content, bank|session_key}
+    POST /capture              {user_content, assistant_content, bank|session_key,
+                                idempotency_key?}
     POST /search/memories      {query, limit, type}
     POST /search/conversations {query, limit, session_key}
     POST /session/end          {bank|session_key}
@@ -107,6 +108,7 @@ class Handler(BaseHTTPRequestHandler):
                         user_content=body.get("user_content", ""),
                         assistant_content=body.get("assistant_content", ""),
                         user_id=body.get("user_id", ""),
+                        idempotency_key=str(body.get("idempotency_key", "") or ""),
                     ),
                 )
             elif path == "/search/memories":

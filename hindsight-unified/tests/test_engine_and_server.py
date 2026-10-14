@@ -201,3 +201,115 @@ def test_http_unknown_endpoint_404(http_sidecar: str) -> None:
     with pytest.raises(urllib.error.HTTPError) as exc:
         urllib.request.urlopen(req, timeout=5)
     assert exc.value.code == 404
+
+
+# -- idempotent capture, end to end --------------------------------------------
+
+
+class _RecordingAdapter:
+    """Counts the turns fanned out to L1, which is what a replay must not reach."""
+
+    name = "recording"
+
+    def __init__(self) -> None:
+        self.captured: list[str] = []
+
+    def available(self) -> bool:
+        return True
+
+    def capture(self, event, bank_dir) -> None:
+        self.captured.append(event.user)
+
+    def recall_enrich(self, req, bank_dir) -> list:
+        return []
+
+    def consolidate(self, bank, bank_dir) -> None:
+        return None
+
+    def export_paths(self, bank, bank_dir) -> list:
+        return []
+
+
+def test_a_retried_capture_over_http_is_written_once(http_sidecar: str) -> None:
+    """The key was supported by the substrate for a long time and passed by no
+    caller above it. This is the path a real retry takes."""
+    body = {
+        "bank": "b",
+        "session_key": "s",
+        "user_content": "the staging db listens on 6543",
+        "assistant_content": "Understood.",
+        "idempotency_key": "sess-1:turn-3",
+    }
+    first = _post(http_sidecar, "/capture", body)
+    second = _post(http_sidecar, "/capture", body)
+    assert first["entry_id"] == second["entry_id"]
+    assert (first["duplicate"], second["duplicate"]) == (False, True)
+    assert server_mod._engine._substrate.count(server_mod._engine._settings.bank_dir("b")) == 1
+
+
+def test_a_replayed_turn_is_not_fanned_out_to_the_adapters(tmp_path: Path) -> None:
+    """Otherwise the brain ingests the turn twice while the log holds it once."""
+    engine = UnifiedEngine(_settings(tmp_path))
+    recorder = _RecordingAdapter()
+    engine._pipeline._adapters.append(recorder)
+    engine.start()
+    try:
+        for _ in range(3):
+            engine.capture(
+                bank="b",
+                session_key="s",
+                user_content="a fact",
+                assistant_content="ok",
+                idempotency_key="k1",
+            )
+        assert recorder.captured == ["a fact"]
+    finally:
+        engine.stop()
+
+
+def test_identical_turns_without_a_key_stay_distinct(tmp_path: Path) -> None:
+    """Content is not identity: a user who says the same thing twice said it twice."""
+    engine = UnifiedEngine(_settings(tmp_path))
+    engine.start()
+    try:
+        a = engine.capture(bank="b", session_key="s", user_content="yes", assistant_content="ok")
+        b = engine.capture(bank="b", session_key="s", user_content="yes", assistant_content="ok")
+        assert a["entry_id"] != b["entry_id"]
+        assert not a["duplicate"] and not b["duplicate"]
+    finally:
+        engine.stop()
+
+
+def test_a_retry_racing_its_original_writes_once(tmp_path: Path) -> None:
+    """The realistic case: a request times out client-side while the sidecar is
+    still completing it, and the retry arrives concurrently."""
+    engine = UnifiedEngine(_settings(tmp_path))
+    recorder = _RecordingAdapter()
+    engine._pipeline._adapters.append(recorder)
+    engine.start()
+    try:
+        results: list[dict] = []
+        barrier = threading.Barrier(8)
+
+        def _send() -> None:
+            barrier.wait()
+            results.append(
+                engine.capture(
+                    bank="b",
+                    session_key="s",
+                    user_content="same turn",
+                    assistant_content="ok",
+                    idempotency_key="race-1",
+                )
+            )
+
+        threads = [threading.Thread(target=_send) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert len({r["entry_id"] for r in results}) == 1
+        assert sum(not r["duplicate"] for r in results) == 1
+        assert len(recorder.captured) == 1
+    finally:
+        engine.stop()

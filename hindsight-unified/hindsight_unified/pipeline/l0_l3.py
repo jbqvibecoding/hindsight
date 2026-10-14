@@ -30,7 +30,7 @@ from ..adapters.mempalace_index import MempalaceIndexAdapter
 from ..adapters.openviking_injection import OpenVikingInjectionAdapter
 from ..distill import LessonStore
 from ..llm import LLMClient
-from ..substrate import MarkdownSubstrate
+from ..substrate import AppendOutcome, MarkdownSubstrate
 from ..triggers import TriggerStore
 from ..types import CaptureEvent, Recalled, RecallRequest
 from .conversational import (
@@ -112,22 +112,31 @@ class LayeredPipeline:
 
     # -- L0 + L1 -------------------------------------------------------------
 
-    def capture(self, event: CaptureEvent, bank_dir: Path) -> str:
-        """L0 verbatim append, then fan out L1 extraction to adapters."""
-        entry_id = self._substrate.append(
+    def capture(self, event: CaptureEvent, bank_dir: Path) -> AppendOutcome:
+        """L0 verbatim append, then fan out L1 extraction to adapters.
+
+        A replay of a turn already written under the same idempotency key stops
+        at the substrate. Fanning it out anyway would have the semantic brain
+        ingest the turn a second time while the markdown truth holds it once,
+        and the two layers would silently disagree about what was said.
+        """
+        outcome = self._substrate.append_turn(
             bank_dir,
             session_key=event.session_key,
             user=event.user,
             assistant=event.assistant,
             ts=event.ts,
             metadata=event.metadata,
+            idempotency_key=event.idempotency_key,
         )
+        if not outcome.created:
+            return outcome
         for adapter in self._adapters:
             try:
                 adapter.capture(event, bank_dir)
             except Exception as e:  # noqa: BLE001 - adapters must not break capture
                 logger.warning("adapter %s capture failed: %s", adapter.name, e)
-        return entry_id
+        return outcome
 
     # -- recall (fuse brain + substrate, then tier + AAAK) -------------------
 

@@ -28,6 +28,10 @@ class CaptureEvent:
     user_id: str = ""
     ts: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Supplied by whoever knows the turn's identity (the provider), so a
+    # retried delivery of the same turn is written once. Empty means "no
+    # claim": two identical turns without a key stay two entries.
+    idempotency_key: str = ""
 
 
 @dataclass(slots=True)

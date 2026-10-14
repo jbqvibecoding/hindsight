@@ -160,7 +160,14 @@ class UnifiedEngine:
         user_content: str,
         assistant_content: str,
         user_id: str = "",
+        idempotency_key: str = "",
     ) -> dict[str, Any]:
+        """Persist one turn.
+
+        ``duplicate`` is true when ``idempotency_key`` matched a turn already
+        written, so a caller retrying a delivery can tell that its earlier
+        attempt had in fact landed.
+        """
         bank_dir = self._settings.bank_dir(bank)
         event = CaptureEvent(
             bank=bank,
@@ -168,9 +175,15 @@ class UnifiedEngine:
             user=user_content,
             assistant=assistant_content,
             user_id=user_id,
+            idempotency_key=idempotency_key,
         )
-        entry_id = self._pipeline.capture(event, bank_dir)
-        return {"ok": True, "entry_id": entry_id, "brain": self.brain_available}
+        outcome = self._pipeline.capture(event, bank_dir)
+        return {
+            "ok": True,
+            "entry_id": outcome.entry_id,
+            "duplicate": not outcome.created,
+            "brain": self.brain_available,
+        }
 
     def recall(
         self,
