@@ -54,7 +54,26 @@ Env: `UNIFIED_MEMORY_GATEWAY_HOST/PORT` (default `127.0.0.1:8766`),
 
 `GET /health` · `POST /recall` · `POST /capture` · `POST /search/memories` ·
 `POST /search/conversations` · `POST /session/end` · `POST /reflect` ·
-`POST /seed`
+`POST /seed` · `POST /forget/preview` · `POST /forget` · `POST /forget/restore`
+
+Two fields are easy to conflate and mean different things. `bank` is the
+tenant — one per Hermes identity, so memory accumulates across conversations.
+`session_key` is the conversation a turn belongs to; recall uses it to fold
+*this* conversation's last turns into a follow-up query. (A request without
+`bank` falls back to `session_key` for the tenant, for older clients.)
+
+`/capture` accepts an `idempotency_key`. A retry carrying the key of a turn
+already written returns the original `entry_id` with `duplicate: true` and is
+not fanned out to the semantic brain again, so an at-least-once client gets
+exactly-once storage.
+
+Forgetting is a recall filter, not erasure. `/forget/preview` takes a query and
+returns candidates without changing anything; `/forget` takes explicit
+`entry_ids` only, never a query; `/forget/restore` undoes it. A forgotten entry
+is excluded from every recall path — search, the follow-up lane, triggers, and
+any lesson drawn from it — and survives `rederive`. Its text stays in the
+markdown log (`still_on_disk` in every response), and the semantic brain's own
+extracted facts are not touched (`semantic_brain_unaffected`).
 
 The surface mirrors the tencentdb Gateway so the Hermes thin provider
 (`hermes-agent/plugins/memory/unified/`) is a near-copy of that proven plugin.
@@ -63,8 +82,8 @@ The surface mirrors the tencentdb Gateway so the Hermes thin provider
 
 Set `memory.provider: unified` in the Hermes config. The provider supervises
 the sidecar (auto-launch, health checks, circuit breaker, watchdog resurrect)
-and exposes `unified_memory_search`, `unified_conversation_search`, and
-`unified_memory_reflect` tools to the model.
+and exposes `unified_memory_search`, `unified_conversation_search`,
+`unified_memory_reflect` and `unified_memory_forget` tools to the model.
 
 ## Tests
 
