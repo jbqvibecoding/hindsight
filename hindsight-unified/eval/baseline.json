@@ -6,7 +6,7 @@
       "mean": 1.0,
       "ci_lower": 1.0,
       "ci_upper": 1.0,
-      "n": 135,
+      "n": 144,
       "run_std": 0.0
     },
     "ordering": {
@@ -14,15 +14,15 @@
       "mean": 1.0,
       "ci_lower": 1.0,
       "ci_upper": 1.0,
-      "n": 135,
+      "n": 144,
       "run_std": 0.0
     },
     "recall_hit": {
       "metric": "recall_hit",
-      "mean": 0.881,
-      "ci_lower": 0.8254,
-      "ci_upper": 0.9365,
-      "n": 126,
+      "mean": 0.8889,
+      "ci_lower": 0.837,
+      "ci_upper": 0.9407,
+      "n": 135,
       "run_std": 0.0
     }
   },
@@ -33,6 +33,11 @@
       "recall_hit": 1.0
     },
     "contradiction_resolution": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "date_recall": {
       "abstention": 1.0,
       "ordering": 1.0,
       "recall_hit": 1.0
@@ -129,6 +134,21 @@
       "recall_hit": 1.0
     },
     "cr-03": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "dr-01": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "dr-02": {
+      "abstention": 1.0,
+      "ordering": 1.0,
+      "recall_hit": 1.0
+    },
+    "dr-03": {
       "abstention": 1.0,
       "ordering": 1.0,
       "recall_hit": 1.0

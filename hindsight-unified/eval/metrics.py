@@ -169,11 +169,14 @@ def no_false_recall(context: str, *, expect_nothing: bool) -> float | None:
 def context_blocks(context: str) -> list[str]:
     """Split an assembled context into its per-entry blocks.
 
-    Every rendered entry — index card or body line — starts with ``- (`` or
-    ``[n] (``, so the block boundary is recoverable from the text alone without
-    the harness needing the structured result.
+    Every rendered entry — index card or body line — starts with ``- (``,
+    ``- **YYYY-MM-DD** (`` when it is dated, or ``[n] (``, so the block boundary
+    is recoverable from the text alone without the harness needing the
+    structured result. The dated form must be listed here: without it every
+    dated body line silently merges into one block, and ordering can then pass
+    on the index cards alone - for the wrong reason, with no error.
     """
-    parts = re.split(r"(?m)^(?:- \(|\[\d+\] \()", context or "")
+    parts = re.split(r"(?m)^(?:- (?:\*\*\d{4}-\d{2}-\d{2}\*\* )?\(|\[\d+\] \()", context or "")
     return [p for p in parts if p.strip()]
 
 

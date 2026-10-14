@@ -162,6 +162,19 @@ def test_delta_refuses_a_verdict_inside_the_noise_floor() -> None:
     assert "no conclusion" in verdict
 
 
+def test_dated_entries_are_still_separate_blocks() -> None:
+    """Dating entries changed the line prefix the splitter keyed on; without the
+    dated form every body entry merged into one block, and ordering could pass
+    on the index cards alone, for the wrong reason and with no error."""
+    context = (
+        "[0] (substrate) spaces card\n[1] (substrate) tabs card\n\n"
+        "- **2026-06-01** (substrate) User: we now indent with spaces\n"
+        "- **2026-01-01** (substrate) User: I indent with tabs\n"
+    )
+    assert len(M.context_blocks(context)) == 4
+    assert M.ordering_correct(context, ["spaces", "tabs"]) == 1.0
+
+
 # -- paired comparison ---------------------------------------------------------
 
 
@@ -320,13 +333,13 @@ def test_failures_are_not_cached_but_successes_are(tmp_path: Path) -> None:
 
 def test_shipped_case_set_is_wellformed() -> None:
     cases = load_cases(Path(__file__).resolve().parents[1] / "eval" / "cases.jsonl")
-    assert len(cases) == 45
-    assert len({c.case_id for c in cases}) == 45
-    # Ten BEAM-style skill categories plus five of our own, three cases each.
+    assert len(cases) == 48
+    assert len({c.case_id for c in cases}) == 48
+    # Ten BEAM-style skill categories plus six of our own, three cases each.
     categories = {}
     for case in cases:
         categories[case.category] = categories.get(case.category, 0) + 1
-    assert len(categories) == 15
+    assert len(categories) == 16
     assert set(categories.values()) == {3}
     for case in cases:
         assert case.question and case.answer

@@ -41,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from eval import metrics as M  # noqa: E402
 from eval.judge import Judge  # noqa: E402
 from hindsight_unified.config import Settings  # noqa: E402
-from hindsight_unified.engine import UnifiedEngine  # noqa: E402
+from hindsight_unified.engine import UnifiedEngine, parse_ts  # noqa: E402
 
 EVAL_DIR = Path(__file__).resolve().parent
 DEFAULT_CASES = EVAL_DIR / "cases.jsonl"
@@ -186,6 +186,7 @@ def answer_cases(
                         session_key="eval",
                         user_content=turn.get("user", ""),
                         assistant_content=turn.get("assistant", ""),
+                        ts=parse_ts(turn.get("ts")),
                     )
                 recall = engine.recall(bank=bank, query=case.question, limit=8)
                 row = {

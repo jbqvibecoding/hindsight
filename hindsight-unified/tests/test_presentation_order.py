@@ -118,7 +118,8 @@ def test_index_cards_and_body_agree_on_what_leads(tmp_path: Path) -> None:
         )
         context = engine.recall(bank="b", query="indent")["context"]
         card_zero = next(line for line in context.splitlines() if line.startswith("[0]"))
-        body_first = next(line for line in context.splitlines() if line.startswith("- ("))
+        # Body entries start "- " (dated: "- **YYYY-MM-DD** ("); cards start "[n]".
+        body_first = next(line for line in context.splitlines() if line.startswith("- "))
         assert "4 spaces" in card_zero
         assert "4 spaces" in body_first
     finally:

@@ -13,7 +13,7 @@ near-copy) plus ``/reflect``:
     GET  /health
     POST /recall               {query, bank|session_key, user_id, limit, ...}
     POST /capture              {user_content, assistant_content, bank|session_key,
-                                idempotency_key?}
+                                idempotency_key?, ts?}
     POST /forget/preview       {bank, query, limit?}   -> candidates; changes nothing
     POST /forget               {bank, entry_ids, reason?}  ids only, never a query
     POST /forget/restore       {bank, entry_ids}
@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from .config import Settings
-from .engine import UnifiedEngine
+from .engine import UnifiedEngine, parse_ts
 from .substrate import SingletonLockHeld
 
 logger = logging.getLogger(__name__)
@@ -103,6 +103,11 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                 )
             elif path == "/capture":
+                try:
+                    ts = parse_ts(body.get("ts"))
+                except ValueError as e:
+                    self._send(400, {"error": str(e)})
+                    return
                 self._send(
                     200,
                     engine.capture(
@@ -112,6 +117,7 @@ class Handler(BaseHTTPRequestHandler):
                         assistant_content=body.get("assistant_content", ""),
                         user_id=body.get("user_id", ""),
                         idempotency_key=str(body.get("idempotency_key", "") or ""),
+                        ts=ts,
                     ),
                 )
             elif path == "/forget/preview":
@@ -206,6 +212,9 @@ def _handle_seed(engine: UnifiedEngine, body: dict[str, Any]) -> dict[str, Any]:
             user_content=item.get("user_content", "") or item.get("user", ""),
             assistant_content=item.get("assistant_content", "") or item.get("assistant", ""),
             user_id=item.get("user_id", ""),
+            # Imported history keeps its own dates. Stamping every turn with the
+            # moment of import made a year-old conversation read as the newest.
+            ts=parse_ts(item.get("ts")),
         )
         count += 1
     return {"ok": True, "rounds_processed": count}

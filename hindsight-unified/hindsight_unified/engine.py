@@ -16,6 +16,7 @@ usable.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from . import forget as forget_mod
@@ -36,6 +37,33 @@ from .triggers import TRIGGER_FILE
 from .types import CaptureEvent, RecallMarker, RecallRequest
 
 logger = logging.getLogger(__name__)
+
+
+def parse_ts(value: Any) -> float:
+    """A turn's time, from epoch seconds or ISO-8601. ``0.0`` means "now".
+
+    Lets a caller importing old conversations keep their real dates instead of
+    stamping every turn with the moment of import. A bare date is read as noon
+    UTC so it lands on the same calendar day in every timezone within +/-11h;
+    a datetime without an offset is read as UTC. Anything else is a ValueError.
+    """
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, bool):
+        raise ValueError(f"unusable timestamp: {value!r}")
+    if isinstance(value, int | float):
+        return float(value)
+    text = str(value).strip()
+    try:
+        if len(text) == 10:
+            parsed = datetime.fromisoformat(text).replace(hour=12, tzinfo=UTC)
+        else:
+            parsed = datetime.fromisoformat(text)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+    except ValueError as e:
+        raise ValueError(f"unusable timestamp: {value!r}") from e
+    return parsed.timestamp()
 
 
 class UnifiedEngine:
@@ -162,6 +190,7 @@ class UnifiedEngine:
         assistant_content: str,
         user_id: str = "",
         idempotency_key: str = "",
+        ts: float = 0.0,
     ) -> dict[str, Any]:
         """Persist one turn.
 
@@ -177,6 +206,7 @@ class UnifiedEngine:
             assistant=assistant_content,
             user_id=user_id,
             idempotency_key=idempotency_key,
+            ts=ts,
         )
         outcome = self._pipeline.capture(event, bank_dir)
         return {

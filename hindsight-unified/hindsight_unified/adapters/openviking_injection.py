@@ -18,6 +18,7 @@ Falls back to a pure-Python assembler when the ``openviking`` SDK is absent.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,14 @@ logger = logging.getLogger(__name__)
 # Rough token estimate: ~4 chars/token. Good enough for budgeting; the brain
 # already enforces its own precise token filter upstream.
 _CHARS_PER_TOKEN = 4
+
+
+def _ts_of(r: Recalled) -> float:
+    """The epoch time an item was said, or 0.0 when it has none."""
+    value = (r.metadata or {}).get("ts")
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return 0.0
+    return float(value)
 
 
 class OpenVikingInjectionAdapter(UnifiedAdapter):
@@ -148,7 +157,13 @@ class OpenVikingInjectionAdapter(UnifiedAdapter):
         meta = r.metadata or {}
         seq = meta.get("seq")
         if isinstance(seq, int):
-            return f"{seq:012d}"
+            # When it was said first, append position second. Append position
+            # alone was right only while every turn was captured live; a turn
+            # imported with its real, older date would otherwise present as the
+            # newest, and the conflict rule would follow it over what replaced
+            # it. Position still breaks ties inside one millisecond, which is
+            # the nondeterminism it was introduced to remove.
+            return f"{_ts_of(r):020.6f}|{seq:012d}"
         return str(meta.get("entry_id") or "")
 
     @classmethod
@@ -174,7 +189,20 @@ class OpenVikingInjectionAdapter(UnifiedAdapter):
 
     @staticmethod
     def _render(r: Recalled) -> str:
+        """One entry, dated when it has a date.
+
+        The date uses gbrain's timeline form (``**YYYY-MM-DD**``). A recalled
+        turn used to carry no time at all, so "I'll rotate the keys next
+        Monday", recalled weeks later, was unanchored: the model knows today's
+        date from the host, but not the date the memory was said, and a
+        relative expression inside it cannot be resolved. A date, not "3 days
+        ago": an absolute date cannot go stale in a cached prompt, and the
+        model already has today's date to compute the age itself.
+        """
         tag = r.fact_type or r.source
+        ts = _ts_of(r)
+        if ts > 0:
+            return f"- **{time.strftime('%Y-%m-%d', time.localtime(ts))}** ({tag}) {r.text}"
         return f"- ({tag}) {r.text}"
 
     @staticmethod

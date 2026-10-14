@@ -232,7 +232,7 @@ class LayeredPipeline:
                 text=entry.as_text(),
                 source="substrate",
                 score=score,
-                metadata={"entry_id": entry.entry_id, "seq": entry.seq},
+                metadata={"entry_id": entry.entry_id, "seq": entry.seq, "ts": entry.ts},
             )
             for entry, score in self._substrate.search(bank_dir, query, limit=limit)
         ]
@@ -258,7 +258,7 @@ class LayeredPipeline:
                     text=entry.as_text(),
                     source="trigger",
                     score=score,
-                    metadata={"entry_id": entry.entry_id, "seq": entry.seq},
+                    metadata={"entry_id": entry.entry_id, "seq": entry.seq, "ts": entry.ts},
                 )
             )
         return lane
