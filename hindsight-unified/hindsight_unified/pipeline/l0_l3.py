@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from ..adapters.base import UnifiedAdapter
 from ..adapters.mempalace_index import MempalaceIndexAdapter
@@ -31,6 +33,7 @@ from ..adapters.openviking_injection import OpenVikingInjectionAdapter
 from ..distill import LessonStore
 from ..forget import forgotten_ids
 from ..llm import LLMClient
+from ..sanitize import neutralize
 from ..substrate import AppendOutcome, MarkdownSubstrate
 from ..triggers import TriggerStore
 from ..types import CaptureEvent, Recalled, RecallRequest
@@ -208,6 +211,12 @@ class LayeredPipeline:
         if self._openviking is not None:
             fused = self._openviking.order_for_presentation(fused)
 
+        # Everything below is injected into the prompt as memory, so clean it
+        # once here, which keeps the cards and the body showing the same text.
+        # Capture and the search endpoints never pass through this point, so
+        # the markdown and agent-requested search keep the exact words.
+        fused, neutralized = self._neutralize(fused)
+
         aaak = ""
         if self._mempalace is not None:
             aaak = self._mempalace.aaak_cards(fused)
@@ -222,8 +231,24 @@ class LayeredPipeline:
             "num_fused": len(fused),
             "sources": sorted({r.source for r in fused}),
             "trajectory": trajectory,
+            "neutralized": neutralized,
         }
         return context, fused, meta
+
+    @staticmethod
+    def _neutralize(items: list[Recalled]) -> tuple[list[Recalled], dict[str, Any]]:
+        """Copies with instruction-like text neutralised, plus what fired."""
+        cleaned: list[Recalled] = []
+        fired: set[str] = set()
+        touched = 0
+        for r in items:
+            text, matched = neutralize(r.text)
+            if matched:
+                touched += 1
+                fired.update(matched)
+                r = replace(r, text=text)
+            cleaned.append(r)
+        return cleaned, {"items": touched, "patterns": sorted(fired)}
 
     def _substrate_lane(self, bank_dir: Path, query: str, limit: int) -> list[Recalled]:
         """One substrate retrieval lane, as a ranked Recalled list."""
