@@ -67,6 +67,22 @@ already written returns the original `entry_id` with `duplicate: true` and is
 not fanned out to the semantic brain again, so an at-least-once client gets
 exactly-once storage.
 
+`/capture` and each `/seed` item accept an optional `ts`: an ISO-8601
+timestamp, a bare `YYYY-MM-DD` date (read as noon UTC, so it keeps its day in
+every timezone), or epoch seconds. Without one, the turn is stamped at capture
+time. An unusable `ts` is a 400. Recalled turns carry the date they were said,
+as `- **YYYY-MM-DD** (source) ...`, so "next Monday" inside a memory can be
+resolved. Presentation order is newest first by that time, with append
+position breaking ties, so imported history keeps its place in time.
+
+`/recall` output is injected into the agent's prompt as memory every turn, so
+it passes through a pattern filter first (`sanitize.py`, ported from gbrain).
+Text like "ignore all previous instructions" is replaced by `[redacted]`, and
+`meta.neutralized` reports how many items were touched and which patterns
+fired. The patterns are a filter for trivial attacks, not a guarantee. The
+markdown log, the index, `/search/*` and `/forget/preview` keep the exact
+words.
+
 Forgetting is a recall filter, not erasure. `/forget/preview` takes a query and
 returns candidates without changing anything; `/forget` takes explicit
 `entry_ids` only, never a query; `/forget/restore` undoes it. A forgotten entry

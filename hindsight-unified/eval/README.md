@@ -21,15 +21,15 @@ number can be traced back to what produced it.
 
 ## The case set
 
-45 hand-written cases in our own domain (`cases.jsonl`), three in each of
-fifteen categories. Ten are the skill categories BEAM uses — the closest
+48 hand-written cases in our own domain (`cases.jsonl`), three in each of
+sixteen categories. Ten are the skill categories BEAM uses — the closest
 published taxonomy to what an agent memory actually does:
 
 `information_extraction`, `temporal_reasoning`, `multi_session_reasoning`,
 `contradiction_resolution`, `event_ordering`, `knowledge_update`,
 `summarization`, `abstention`, `preference_following`, `instruction_following`.
 
-The other five were added here, and **every one of them was added because the
+The other six were added here, and **every one of them was added because the
 system failed it at the time of writing.** That is the rule: a category that
 passes on arrival measures nothing.
 
@@ -40,6 +40,7 @@ passes on arrival measures nothing.
 | `predecessor_query` | "Which region did we use *before* the move?" The question's terms match the *current* entry; the superseded one shares nothing with the question, so it is never retrieved. |
 | `no_answer` | A question the bank genuinely cannot answer, over a distractor-only corpus. Top-k returns its k regardless of score, so this asks whether the system can decline. |
 | `inflection_gap` | The question and its answer share **no exact token**, only inflections — "how are migrations ordered" against "our migration runner picks files in lexical order". Exact-token BM25 cannot match a word against its own inflection. |
+| `date_recall` | The anchor is the **date a turn was said** ("I'll rotate the signing keys next Monday", said on 2026-01-20). Recalled turns used to carry no time at all, so a relative expression inside a memory could not be resolved, whatever was retrieved. Seed turns carry a `ts`. |
 
 Hand-written beats a public benchmark here. HotPotQA measures multi-hop
 Wikipedia QA, not whether an agent remembers that you moved off Slack.
@@ -107,25 +108,56 @@ Two different variances, and they answer different questions:
 - `run_std` — spread across **repeated identical runs**. **If `run_std` exceeds
   the delta you are looking at, the change did nothing.**
 
-So: `--runs` defaults to 3 because one run is not a measurement, and
-`describe_delta` refuses a verdict when intervals overlap or the delta sits
-inside the noise floor. On the current substrate-only path `run_std` is
-`0.0000` — the keyword lane is fully deterministic — so any delta there is
-signal. That will stop being true the moment an LLM or a semantic index enters
-the path, which is exactly when the number starts earning its keep.
+So `--runs` defaults to 3, because one run is not a measurement. On the current
+substrate-only path `run_std` is `0.0000`, since the keyword lane is fully
+deterministic, so any delta there is signal. That stops being true the moment
+an LLM or a semantic index enters the path, which is exactly when the number
+starts earning its keep.
 
-The gate compares against the baseline's `ci_lower`, not its mean, so a drop
-has to clear the baseline's own spread before it counts as a regression.
+### Paired comparison
+
+Two runs over the same cases are compared **case by case**, not interval
+against interval. Comparing two independent confidence intervals throws away
+the pairing: a change that flips three cases up and none down lands inside
+overlapping intervals and reads as "no conclusion". gbrain's
+`eval-compare.ts` specifies a paired bootstrap but never computes one. This is
+that test, implemented in `metrics.paired_delta`:
+
+- **Per-case means.** `baseline.json` stores each case's per-run mean
+  (`per_case`), so the next run has something to pair against.
+- **Bootstrap over shared cases.** It takes 10,000 seeded resamples of the
+  per-case differences and reports the mean delta with a 95% interval. The
+  two-sided p is twice the smaller tail. Cases present on only one side are
+  counted, not paired.
+- **Bonferroni.** p is multiplied by the number of metrics compared, because
+  three metrics checked at 0.05 each would raise a false alarm about one run
+  in seven.
+- **Noise floor first.** A delta no larger than `run_std` gets no verdict at
+  all ("within run-to-run noise — no conclusion"). Per-case means hide the
+  variance between runs, so the paired interval alone would be overconfident.
+- **Named cases.** Every comparison lists the cases that moved, for example
+  `recall_hit changed: +ix-01 -pd-02`. That list is how a pass for the wrong
+  reason gets spotted.
+
+The gate fails only on a **significant** regression larger than `run_std`.
+New failing cases that the baseline never had are not a regression. With no
+`per_case` on either side, the gate falls back to the old rule: the mean must
+not drop below the baseline's `ci_lower`.
+
+The test has little power at this size. With 45 scored cases a single flipped
+case is about 0.02, and it is never significant. That is the correct answer:
+one case is an anecdote. The changed-cases list is what lets you read the
+anecdote anyway.
 
 ## Baseline
 
-`baseline.json`, 45 cases x 3 runs, substrate-only (no semantic brain, no LLM
+`baseline.json`, 48 cases x 3 runs, substrate-only (no semantic brain, no LLM
 lane, no judge):
 
 ```
-abstention       mean=1.0000 [1.0000, 1.0000]  n=135  run_std=0.0000
-ordering         mean=1.0000 [1.0000, 1.0000]  n=135  run_std=0.0000
-recall_hit       mean=0.8810 [0.8254, 0.9365]  n=126  run_std=0.0000
+abstention       mean=1.0000 [1.0000, 1.0000]  n=144  run_std=0.0000
+ordering         mean=1.0000 [1.0000, 1.0000]  n=144  run_std=0.0000
+recall_hit       mean=0.8889 [0.8370, 0.9407]  n=135  run_std=0.0000
 ```
 
 Per category, which is where the actionable signal lives:
@@ -133,10 +165,10 @@ Per category, which is where the actionable signal lives:
 | Category | `recall_hit` | Why |
 |---|---|---|
 | `vocabulary_gap` | **0.00** | Zero term overlap between question and answer. Unreachable by any lexical lane — this is what the write-time trigger lane exists for. |
-| `predecessor_query` | **0.00** | A direct probe shows none of its three answers is retrievable by the raw lane at all, which is exactly what the category asserts. |
+| `predecessor_query` | **0.33** | A direct probe shows none of its three answers is retrievable by the raw lane at all, which is exactly what the category asserts. The one pass is a top-k slot filled by an entry that barely scored. |
 | everything else (13) | 1.00 | — |
 
-`recall_hit` counts 126, not 135, because the `no_answer` cases have no anchors
+`recall_hit` counts 135, not 144, because the `no_answer` cases have no anchors
 to find — a case that should return nothing cannot contribute to a recall mean
 without corrupting it.
 
@@ -168,6 +200,12 @@ is the only reason to trust the numbers it now reports.
 | Stemming the retrieval tokenizer | `recall_hit` 0.8333 → **0.8810**, `inflection_gap` 0.00 → 1.00. `predecessor_query` reads 0.67 → 0.33 and that is **not** a regression: none of its three answers is lexically reachable, so every pass it ever recorded was a slot filled by an entry that barely scored. More real matches evict the freeloaders. |
 | Field-weighted BM25 document | **+0.0000, and not shipped.** BM25's length normalisation already ranks a short user statement above a verbose agent reply (0.732 vs 0.709 at weight 1), so the weight only widens a margin that was not in doubt. A ranking knob no test can distinguish from its absence is a liability. |
 | E3 write-time trigger lane | **+0.0000, and correct.** Inert with no key configured, exactly as the distillation lane was. Its mechanism is verified by a stub test on the real `vocabulary_gap` case; its prompt is not validated. |
+| Paired bootstrap (from gbrain's spec) | **Instrument, not system.** Re-scoring the stemming change: the old interval rule said "no conclusion"; the paired test says +0.0476 [-0.0476, +0.1429], p_adj 1.00, not significant, and names the cases: `+ix-01 +ix-02 +ix-03 -pd-02`. That matches the stemming row above, case for case, which is the point. The verdict stays "not significant" and the cause is now on the page. |
+| Dated recall + real import dates (from gbrain's timeline form) | `date_recall` 0.00 → **1.00**, with **0 shared cases changed**. Every recalled turn renders as `- **YYYY-MM-DD** (source) ...`. Recency now keys on the time a turn was said first and append position second, so an older conversation imported late no longer presents as newest. |
+| Injection neutralisation (from gbrain's `INJECTION_PATTERNS`) | **0 shared cases changed, and the eval cannot measure it.** No case contains an attack, so its measurement is the unit tests: 10 attacks neutralised, 11 ordinary engineering sentences untouched. Each of those sentences was rewritten by one of gbrain's original patterns. That is why six patterns and the bare `DAN` alternative were dropped and three patterns narrowed. |
+| gbrain zero-LLM typed edges | **Not ported.** It extracts edges from links the user wrote by hand and from a fixed vocabulary of investor-domain verbs. Conversation turns contain neither. |
+| gbrain autocut / intent-based return caps | **Not ported.** Autocut cuts on a cross-encoder rerank score, which we do not have. gbrain's own measurement explains why: the RRF rank-1→rank-2 gap is about the same whether rank 1 is right (0.602) or wrong (0.569). That is the same wall the `no_false_recall` discriminators hit. The intent caps are off by default in gbrain itself. |
+| gbrain Jaccard near-duplicate collapse | **Not ported.** It found one near-duplicate pair across the 45 scored cases, too few to move any metric. A ranking change no test can tell apart from its absence is a liability, the same verdict as field weighting. |
 
 Three metric bugs were also caught by inspecting cases rather than trusting
 scores: substring anchors reported hits the system never made ("Wen" inside
